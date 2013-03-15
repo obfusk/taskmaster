@@ -13,7 +13,7 @@ tm_tf="${TASKFILE:-Taskfile}"
 function dt () { date +'%F %T'; }
 
 # Usage: ohai <message>
-function ohai () { echo "[taskmaster -- $(dt) -- $1]"; }
+function ohai () { echo "[ taskmaster -- $(dt) -- $1 ]"; }
 
 ohai 'starting...'
 
@@ -98,11 +98,13 @@ for (( i = 0; i < n_tasks; ++i )); do                           # {{{1
                         2> >( log "$t" STDERR ) &
     fi
     pid=$!; pids+=( "$pid" )
-    ohai "start $2 -- pid=$pid"
+    ohai "start $t -- pid=$pid"
   done
 done                                                            # }}}1
 
 # Kills processes; notifies; used by trap.
+# NB: we use >> pkill -P << to kill all subprocesses of >> sh -c <<,
+# but NOT the entire process group.
 function cleanup ()
 {                                                               # {{{1
   local k=0 i j t d
@@ -110,8 +112,8 @@ function cleanup ()
     c="${conc[i]}"
     for (( j = 1; j <= c; ++j )); do
       t="${tasks[i]}.$j"
-      ohai "kill $t -- signal=${sigs[i]}"
-      kill -s "${sigs[i]}" "${pids[k]}" || true; (( ++k ))
+      ohai "kill $t -- signal=${sigs[i]} pid=${pids[k]}"
+      pkill -"${sigs[i]}" -P "${pids[k]}"; (( ++k ))
     done
   done
 }                                                               # }}}1
