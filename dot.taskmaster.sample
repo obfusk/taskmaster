@@ -1,0 +1,6 @@
+export VARIABLE=VALUE
+
+logdir /path/to/log/dir           # logdir for all tasks
+logdir bar /path/to/other/log/dir # logdir for one task
+
+concurrency foo=1 bar=2

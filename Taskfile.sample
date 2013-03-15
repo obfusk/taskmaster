@@ -1,0 +1,2 @@
+sidekiq:  SIGINT bundle exec sidekiq
+puma:     bundle exec puma -e production -b "unix://$SOCKET"
