@@ -5,7 +5,7 @@
     Date        : 2013-03-15
 
     Copyright   : Copyright (C) 2013  Felix C. Stegerman
-    Version     : 0.0.1
+    Version     : 0.2.0
 
 []: }}}1
 
