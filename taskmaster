@@ -3,7 +3,7 @@
 set -e
 
 if [ "$1" == --help ]; then
-  echo 'Usage: taskmaster [<taskfile>]' >&2; exit 0
+  echo 'Usage: taskmaster [ <task>=<n> ... ]' >&2; exit 0
 fi
 
 # --
@@ -36,6 +36,7 @@ function concurrency ()
 
 cfgfile="${TASKMASTERRC:-.taskmaster}"
 [ -e "$cfgfile" ] && source "$cfgfile"
+[ "$#" -gt 0 ] && concurrency "$@"
 
 # --
 
@@ -55,7 +56,7 @@ function log ()
 
 # --
 
-# Parse Taskfile; read w/o -r allows for continuation lines; appends
+# Parse $TASKFILE; read w/o -r allows for continuation lines; appends
 # to $tasks, $cmds, $sigs.
 while read task cmd; do                                         # {{{1
   t="${task%:}"
@@ -65,7 +66,7 @@ while read task cmd; do                                         # {{{1
     s=SIGTERM c="$cmd"
   fi
   tasks+=( "$t" ); cmds+=( "$c" ); sigs+=( "$s" )
-done < "${1:-Taskfile}"                                         # }}}1
+done < "${TASKFILE:-Taskfile}"                                  # }}}1
 
 n_tasks="${#cmds[@]}"
 
