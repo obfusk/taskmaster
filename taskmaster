@@ -6,13 +6,25 @@ if [ "$1" == --help ]; then
   echo 'Usage: taskmaster [ <task>=<n> ... ]' >&2; exit 0
 fi
 
+tm_rc="${TASKMASTERRC:-.taskmaster}"
+tm_tf="${TASKFILE:-Taskfile}"
+
+# Usage: dt
+function dt () { date +'%F %T'; }
+
+# Usage: ohai <message>
+function ohai () { echo "[taskmaster -- $(dt) -- $1]"; }
+
+ohai 'starting...'
+
 # --
 
 # Usage: logdir [<task>] <dir>
 # Sets $logdir or $logdir__$task.
 function logdir ()
 {                                                               # {{{1
-  if [ "$#" -eq 2]; then
+  ohai "logdir $@"
+  if [ "$#" -eq 2 ]; then
     local t="$1" d="$2"
     [[ "$t" =~ ^[A-Za-z0-9]+$ ]] || exit 1
     eval "logdir__$t=\$d"
@@ -25,6 +37,7 @@ function logdir ()
 # Sets $concurrency__$task; should be called in $TASKMASTERRC.
 function concurrency ()
 {                                                               # {{{1
+  ohai "concurrency $@"
   local x t n
   for x in "$@"; do
     t="${x%=*}" n="${x##*=}"
@@ -34,15 +47,12 @@ function concurrency ()
   done
 }                                                               # }}}1
 
-cfgfile="${TASKMASTERRC:-.taskmaster}"
-[ -e "$cfgfile" ] && source "$cfgfile"
+[ -e "$tm_rc" ] && { ohai "TASKMASTERRC $tm_rc"; source "$tm_rc"; }
 [ "$#" -gt 0 ] && concurrency "$@"
 
 # --
 
 tasks=() cmds=() sigs=() pids=() conc=()
-
-function dt () { date +'%F %T'; }
 
 # Usage: log <task> { STDOUT | STDERR }
 # Reads from STDIN, then writes to STDOUT w/ extra info.
@@ -56,8 +66,10 @@ function log ()
 
 # --
 
-# Parse $TASKFILE; read w/o -r allows for continuation lines; appends
-# to $tasks, $cmds, $sigs.
+ohai "TASKFILE $tm_tf"
+
+# Parse $tm_tf; read w/o -r allows for continuation lines; appends to
+# $tasks, $cmds, $sigs.
 while read task cmd; do                                         # {{{1
   t="${task%:}"
   if [[ "$cmd" =~ ^SIG[A-Z0-9]+' ' ]]; then
@@ -66,7 +78,7 @@ while read task cmd; do                                         # {{{1
     s=SIGTERM c="$cmd"
   fi
   tasks+=( "$t" ); cmds+=( "$c" ); sigs+=( "$s" )
-done < "${TASKFILE:-Taskfile}"                                  # }}}1
+done < "$tm_tf"                                                 # }}}1
 
 n_tasks="${#cmds[@]}"
 
@@ -86,7 +98,7 @@ for (( i = 0; i < n_tasks; ++i )); do                           # {{{1
                         2> >( log "$t" STDERR ) &
     fi
     pid=$!; pids+=( "$pid" )
-    echo "[taskmaster -- $(dt) -- start $t -- pid=$pid]"
+    ohai "start $2 -- pid=$pid"
   done
 done                                                            # }}}1
 
@@ -98,13 +110,17 @@ function cleanup ()
     c="${conc[i]}"
     for (( j = 1; j <= c; ++j )); do
       t="${tasks[i]}.$j"
-      echo "[taskmaster -- $(dt) -- kill $t -- signal=${sigs[i]}]"
-      kill -s "${sigs[i]}" "${pids[k]}"; (( ++k ))
+      ohai "kill $t -- signal=${sigs[i]}"
+      kill -s "${sigs[i]}" "${pids[k]}" || true; (( ++k ))
     done
   done
 }                                                               # }}}1
 
-trap stop SIGINT SIGTERM EXIT
+# --
+
+trap cleanup SIGINT SIGTERM
 wait
+
+ohai 'done'
 
 # vim: set tw=70 sw=2 sts=2 et fdm=marker :
