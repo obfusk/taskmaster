@@ -19,9 +19,27 @@
   configuration can be specified in a .taskmaster file (or
   $TASKMASTERRC).  You can specify a global or task-specific logdir,
   or let taskmaster log to stdout.  A task's command can be prefixed
-  with SIG\* to use that signal to kill it.
+  with SIG\* to use that signal to kill it.  You can also specify a
+  global or task-specific working directory.
 
   See \*.sample for examples.
+
+[]: }}}1
+
+## Be careful with backround processes and signals
+[]: {{{1
+
+  The commands in the Taskfile are passed to `sh -c`.  To prevent most
+  problems with backround processes, taskmaster will kill all
+  subprocesses of `sh -c` as well as the process itself, but will
+  leave any grandchildren alone.  Nonetheless, some care must be taken
+  with commands that use shell features.
+
+  `SIGINT sleep 37` will not be killed by the SIGINT, even though
+  sleep normally responds to SIGINT.
+
+  `sleep 42 &` will not die because it's parent process (`sh -c`) is
+  dead; `sleep 42 & wait` does die.
 
 []: }}}1
 

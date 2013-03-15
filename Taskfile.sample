@@ -1,2 +1,4 @@
 sidekiq:  SIGINT bundle exec sidekiq
 puma:     bundle exec puma -e production -b "unix://$SOCKET"
+foo:      sleep 37 & sleep 42 & wait
+bar:      cd /some/dir && do-something

@@ -19,6 +19,20 @@ ohai 'starting...'
 
 # --
 
+# Usage: cwd [<task>] <dir>
+# Sets $tm_cwd or $tm_cwd__$task.
+function cwd ()
+{                                                               # {{{1
+  ohai "cwd $@"
+  if [ "$#" -eq 2 ]; then
+    local t="$1" d="$2"
+    [[ "$t" =~ ^[A-Za-z0-9]+$ ]] || exit 1
+    eval "tm_cwd__$t=\$d"
+  else
+    tm_cwd="$1"
+  fi
+}                                                               # }}}1
+
 # Usage: logdir [<task>] <dir>
 # Sets $logdir or $logdir__$task.
 function logdir ()
@@ -87,18 +101,24 @@ n_tasks="${#cmds[@]}"
 for (( i = 0; i < n_tasks; ++i )); do                           # {{{1
   eval "c_=\$concurrency__${tasks[i]}"; c="${c_:-1}"; conc+=( "$c" )
   for (( j = 1; j <= c; ++j )); do
-    t="${tasks[i]}.$j"; eval "l_=\$logdir__${tasks[i]}"
-    l="${l_:-$logdir}"
-    if [ -n "$l" ]; then
-      p="$l/$t"
-      sh -c "${cmds[i]}" >> "$p-stdout.log" \
-                        2>> "$p-stderr.log" &
-    else
-      sh -c "${cmds[i]}" > >( log "$t" STDOUT ) \
-                        2> >( log "$t" STDERR ) &
-    fi
-    pid=$!; pids+=( "$pid" )
-    ohai "start $t -- pid=$pid"
+    t="${tasks[i]}.$j"
+    eval "l_=\$logdir__${tasks[i]}"; l="${l_:-$logdir}"
+    eval "d_=\$tm_cwd__${tasks[i]}"; d="${d_:-$tm_cwd}"
+
+    [ -n "$d" ] && { pushd "$d" >/dev/null || exit 1 }
+
+      if [ -n "$l" ]; then
+        p="$( readlink -f "$l" )/$t"
+        sh -c "${cmds[i]}" >> "$p-stdout.log" \
+                          2>> "$p-stderr.log" &
+      else
+        sh -c "${cmds[i]}" > >( log "$t" STDOUT ) \
+                          2> >( log "$t" STDERR ) &
+      fi
+      pid=$!; pids+=( "$pid" )
+      ohai "start $t -- pid=$pid"
+
+    [ -n "$d" ] && { popd >/dev/null || exit 1 }
   done
 done                                                            # }}}1
 
@@ -113,7 +133,9 @@ function cleanup ()
     for (( j = 1; j <= c; ++j )); do
       t="${tasks[i]}.$j"
       ohai "kill $t -- signal=${sigs[i]} pid=${pids[k]}"
-      pkill -"${sigs[i]}" -P "${pids[k]}"; (( ++k ))
+      pkill -"${sigs[i]}" -P  "${pids[k]}" || true
+      kill  -"${sigs[i]}"     "${pids[k]}" || true
+      (( ++k ))
     done
   done
 }                                                               # }}}1

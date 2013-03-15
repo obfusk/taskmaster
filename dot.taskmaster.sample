@@ -1,6 +1,9 @@
 export VARIABLE=VALUE
 
-logdir /path/to/log/dir           # logdir for all tasks
-logdir bar /path/to/other/log/dir # logdir for one task
+cwd /path/to/working/dir            # cwd for all tasks
+cwd baz /path/to/other/working/dir  # cwd for one task
+
+logdir /path/to/log/dir             # logdir for all tasks
+logdir bar /path/to/other/log/dir   # logdir for one task
 
 concurrency foo=1 bar=2
