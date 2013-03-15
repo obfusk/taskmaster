@@ -105,7 +105,7 @@ for (( i = 0; i < n_tasks; ++i )); do                           # {{{1
     eval "l_=\$logdir__${tasks[i]}"; l="${l_:-$logdir}"
     eval "d_=\$tm_cwd__${tasks[i]}"; d="${d_:-$tm_cwd}"
 
-    [ -n "$d" ] && { pushd "$d" >/dev/null || exit 1 }
+    [ -n "$d" ] && { pushd "$d" >/dev/null || exit 1; }
 
       if [ -n "$l" ]; then
         p="$( readlink -f "$l" )/$t"
@@ -118,7 +118,7 @@ for (( i = 0; i < n_tasks; ++i )); do                           # {{{1
       pid=$!; pids+=( "$pid" )
       ohai "start $t -- pid=$pid"
 
-    [ -n "$d" ] && { popd >/dev/null || exit 1 }
+    [ -n "$d" ] && { popd >/dev/null || exit 1; }
   done
 done                                                            # }}}1
 
@@ -133,8 +133,8 @@ function cleanup ()
     for (( j = 1; j <= c; ++j )); do
       t="${tasks[i]}.$j"
       ohai "kill $t -- signal=${sigs[i]} pid=${pids[k]}"
-      pkill -"${sigs[i]}" -P  "${pids[k]}" || true
-      kill  -"${sigs[i]}"     "${pids[k]}" || true
+      pkill -"${sigs[i]}" -P  "${pids[k]}"              || true
+      kill  -"${sigs[i]}"     "${pids[k]}" 2>/dev/null  || true
       (( ++k ))
     done
   done
