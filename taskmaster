@@ -78,6 +78,20 @@ function log ()
   done
 }                                                               # }}}1
 
+# Usage: kill_w_children -<sig> <pid>
+# Kills pid, sleeps 1 sec, kills remaining direct children
+function kill_w_children
+{
+  local sig="$1" pid="$2" alive p pp
+  alive="$( ps -p "$pid" -o pid= )"
+  [ -n "$alive" ] && kill "$sig" "$pid"
+  sleep 1
+  ps -eo pid=,ppid= | while read p pp; do
+    [ "$pp" == "$pid" ] && kill "$sig" "$p"
+  done
+  true
+}
+
 # --
 
 ohai "TASKFILE $tm_tf"
@@ -123,8 +137,7 @@ for (( i = 0; i < n_tasks; ++i )); do                           # {{{1
 done                                                            # }}}1
 
 # Kills processes; notifies; used by trap.
-# NB: we use >> pkill -P << to kill all subprocesses of >> sh -c <<,
-# but NOT the entire process group.
+# NB: we kill all direct child processes of >> sh -c <<.
 function cleanup ()
 {                                                               # {{{1
   local k=0 i j t d
@@ -133,8 +146,7 @@ function cleanup ()
     for (( j = 1; j <= c; ++j )); do
       t="${tasks[i]}.$j"
       ohai "kill $t -- signal=${sigs[i]} pid=${pids[k]}"
-      pkill -"${sigs[i]}" -P  "${pids[k]}"              || true
-      kill  -"${sigs[i]}"     "${pids[k]}" 2>/dev/null  || true
+      kill_w_children -"${sigs[i]}" "${pids[k]}"
       (( ++k ))
     done
   done
