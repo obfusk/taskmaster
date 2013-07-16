@@ -23,7 +23,7 @@ ohai 'starting...'
 # Sets $tm_cwd or $tm_cwd__$task.
 function cwd ()
 {                                                               # {{{1
-  ohai "cwd $@"
+  ohai "cwd $*"
   if [ "$#" -eq 2 ]; then
     local t="$1" d="$2"
     [[ "$t" =~ ^[A-Za-z0-9]+$ ]] || exit 1
@@ -37,7 +37,7 @@ function cwd ()
 # Sets $logdir or $logdir__$task.
 function logdir ()
 {                                                               # {{{1
-  ohai "logdir $@"
+  ohai "logdir $*"
   if [ "$#" -eq 2 ]; then
     local t="$1" d="$2"
     [[ "$t" =~ ^[A-Za-z0-9]+$ ]] || exit 1
@@ -51,7 +51,7 @@ function logdir ()
 # Sets $concurrency__$task; should be called in $TASKMASTERRC.
 function concurrency ()
 {                                                               # {{{1
-  ohai "concurrency $@"
+  ohai "concurrency $*"
   local x t n
   for x in "$@"; do
     t="${x%=*}" n="${x##*=}"
@@ -78,19 +78,23 @@ function log ()
   done
 }                                                               # }}}1
 
+# Usage: alive <pid>
+function alive { test -n "$( ps -p "$1" -o pid= )"; }
+
+# Usage: kill_ -<sig> <pid>
+function kill_ { [ "$VERBOSE" == yes ] && ohai "kill $*"; kill "$@"; }
+
 # Usage: kill_w_children -<sig> <pid>
 # Kills pid, sleeps 1 sec, kills remaining direct children
-function kill_w_children
+function kill_w_children                                        # {{{1
 {
-  local sig="$1" pid="$2" alive p pp
-  alive="$( ps -p "$pid" -o pid= )"
-  [ -n "$alive" ] && kill "$sig" "$pid"
-  sleep 1
-  ps -eo pid=,ppid= | while read p pp; do
-    [ "$pp" == "$pid" ] && kill "$sig" "$p"
-  done
+  local sig="$1" pid="$2" p pp ps=()
+  while read p pp; do [ "$pp" == "$pid" ] && ps+=( "$p" ); done < \
+    <( ps -e -o pid= -o ppid= )
+  alive "$pid" && kill_ "$sig" "$pid" ; sleep 1
+  for p in "${ps[@]}"; do alive "$p" && kill_ "$sig" "$p"; done
   true
-}
+}                                                               # }}}1
 
 # --
 
@@ -110,6 +114,9 @@ done < "$tm_tf"                                                 # }}}1
 
 n_tasks="${#cmds[@]}"
 
+# use fd 3 for logging output b/c stderr > stdout otherwise
+exec 3>/dev/stdout
+
 # Start commands w/ concurrency; uses $logdir_$task/$logdir/log;
 # appends to $conc, $pids; notifies.
 for (( i = 0; i < n_tasks; ++i )); do                           # {{{1
@@ -126,8 +133,8 @@ for (( i = 0; i < n_tasks; ++i )); do                           # {{{1
         sh -c "${cmds[i]}" >> "$p-stdout.log" \
                           2>> "$p-stderr.log" &
       else
-        sh -c "${cmds[i]}" > >( log "$t" STDOUT ) \
-                          2> >( log "$t" STDERR ) &
+        sh -c "${cmds[i]}" > >( log "$t" STDOUT >&3 ) \
+                          2> >( log "$t" STDERR >&3 ) &
       fi
       pid=$!; pids+=( "$pid" )
       ohai "start $t -- pid=$pid"
