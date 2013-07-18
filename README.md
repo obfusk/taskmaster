@@ -2,10 +2,10 @@
 
     File        : README.md
     Maintainer  : Felix C. Stegerman <flx@obfusk.net>
-    Date        : 2013-07-16
+    Date        : 2013-07-18
 
     Copyright   : Copyright (C) 2013  Felix C. Stegerman
-    Version     : 0.2.1
+    Version     : 0.2.2
 
 []: }}}1
 
@@ -29,16 +29,16 @@
 ## Be careful with backround processes and signals
 []: {{{1
 
-  The commands in the Taskfile are passed to `sh -c`.  To prevent most
-  problems with backround processes, taskmaster will kill all
-  subprocesses of `sh -c` as well as the process itself, but will
+  The commands in the Taskfile are passed to `bash -c`.  To prevent
+  most problems with backround processes, taskmaster will kill all
+  subprocesses of `bash -c` as well as the process itself, but will
   leave any grandchildren alone.  Nonetheless, some care must be taken
   with commands that use shell features.
 
   `SIGINT sleep 37` will not be killed by the SIGINT, even though
   sleep normally responds to SIGINT.
 
-  `sleep 42 &` will not die because it's parent process (`sh -c`) is
+  `sleep 42 &` will not die because it's parent process (`bash -c`) is
   dead; `sleep 42 & wait` does die.
 
 []: }}}1

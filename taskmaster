@@ -1,5 +1,16 @@
 #!/bin/bash
 
+# --                                                            ; {{{1
+#
+# File        : taskmaster
+# Maintainer  : Felix C. Stegerman <flx@obfusk.net>
+# Date        : 2013-07-18
+#
+# Copyright   : Copyright (C) 2013  Felix C. Stegerman
+# Licence     : GPLv2
+#
+# --                                                            ; }}}1
+
 set -e
 
 if [ "$1" == --help ]; then
@@ -8,6 +19,7 @@ fi
 
 tm_rc="${TASKMASTERRC:-.taskmaster}"
 tm_tf="${TASKFILE:-Taskfile}"
+tm_sh="${TASKMASTER_SHELL:-bash}"
 
 # Usage: dt
 function dt () { date +'%F %T'; }
@@ -130,11 +142,11 @@ for (( i = 0; i < n_tasks; ++i )); do                           # {{{1
 
       if [ -n "$l" ]; then
         p="$( readlink -f "$l" )/$t"
-        sh -c "${cmds[i]}" >> "$p-stdout.log" \
-                          2>> "$p-stderr.log" &
+        "$tm_sh" -c "${cmds[i]}" >> "$p-stdout.log" \
+                                2>> "$p-stderr.log" &
       else
-        sh -c "${cmds[i]}" > >( log "$t" STDOUT >&3 ) \
-                          2> >( log "$t" STDERR >&3 ) &
+        "$tm_sh" -c "${cmds[i]}" > >( log "$t" STDOUT >&3 ) \
+                                2> >( log "$t" STDERR >&3 ) &
       fi
       pid=$!; pids+=( "$pid" )
       ohai "start $t -- pid=$pid"
@@ -144,7 +156,7 @@ for (( i = 0; i < n_tasks; ++i )); do                           # {{{1
 done                                                            # }}}1
 
 # Kills processes; notifies; used by trap.
-# NB: we kill all direct child processes of >> sh -c <<.
+# NB: we kill all direct child processes of >> $tm_sh -c <<.
 function cleanup ()
 {                                                               # {{{1
   local k=0 i j t d
