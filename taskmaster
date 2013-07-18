@@ -64,12 +64,10 @@ function dt () { date +'%F %T'; }
 # Usage: ohai { <i> | w } <message(s)>
 function ohai ()
 {                                                               # {{{1
-  local i="$1"; shift
-  echo -n "[ $( colour "taskmaster $(dt)" w )"
-  for m in "$@"; do
-    printf '%s' " -- $( colour "$m" "$i" )"
-  done
-  echo " ]"
+  local i="$1" o=; shift
+  o+="$( colour "taskmaster $(dt)" w )"
+  for m in "$@"; do o+=" -- $( colour "$m" "$i" )"; done
+  echo "[ $o ]"
 }                                                               # }}}1
 
 ohai w 'starting...'
@@ -208,10 +206,11 @@ function cleanup ()
     for (( j = 1; j <= c; ++j )); do
       t="${tasks[i]}.$j"
       ohai "$i" "kill $t" "signal=${sigs[i]} pid=${pids[k]}"
-      kill_w_children -"${sigs[i]}" "${pids[k]}"
+      kill_w_children -"${sigs[i]}" "${pids[k]}" &
       (( ++k ))
     done
   done
+  wait
 }                                                               # }}}1
 
 # --
