@@ -229,21 +229,24 @@ function worker ()
 
 # --
 
+# Usage: ohai_worker_exited
+function ohai_worker_exited ()
+{ ohai "$worker_i" "$worker_t exited" "exit=$worker_ret"; }
+
 # Usage: spawn
-# Sets $worker_pid.
+# Sets $worker_{pid,ret}
 function spawn ()
 {                                                               # {{{1
   "$tm_sh" -c "$worker_cmd" & worker_pid=$!
-  ohai "$worker_i" "start $worker_t" "pid=$worker_pid"
-  set +e; wait "$worker_pid"; ret="$?"; set -e
-  return "$ret"
+  ohai "$worker_i" "starting $worker_t" "pid=$worker_pid"
+  set +e; wait "$worker_pid"; worker_ret="$?"; set -e
 }                                                               # }}}1
 
 # Usage: spawn_permanent <i> <t> <cmd>
 function spawn_permanent ()
 {                                                               # {{{1
   while :; do
-    spawn "$i" "$t" "$cmd" || true
+    spawn "$i" "$t" "$cmd"; ohai_worker_exited
     kill -SIGUSR1 "$tm_pid"
     sleep .5
   done
@@ -253,7 +256,8 @@ function spawn_permanent ()
 function spawn_transient ()
 {                                                               # {{{1
   while :; do
-    spawn "$i" "$t" "$cmd" && break
+    spawn "$i" "$t" "$cmd"; ohai_worker_exited
+    [ "$worker_ret" -eq 0 ] && break
     kill -SIGUSR1 "$tm_pid"
     sleep .5
   done
@@ -261,7 +265,7 @@ function spawn_transient ()
 
 # Usage: spawn_temporary <i> <t> <cmd>
 function spawn_temporary ()
-{ spawn "$i" "$t" "$cmd" || true; }
+{ spawn "$i" "$t" "$cmd"; ohai_worker_exited; }
 
 # Usage: handle_EXIT_worker
 function handle_EXIT_worker ()
@@ -276,14 +280,14 @@ function handle_EXIT_worker ()
 }                                                               # }}}1
 
 # Usage: spawn_worker <i> <j> <k> <t> <l> <d> <w> <cmd> <sig>
-# Sets $worker_i,t,cmd,sig,pid}.
+# Sets $worker_i,t,cmd,sig,pid,ret}.
 function spawn_worker ()
 {                                                               # {{{1
   local i="$1" j="$2" k="$3" t="$4" l="$5" d="$6" w="$7" cmd="$8"
   local sig="$9" run=(  )
   (
     worker_i="$i" worker_t="$t" worker_cmd="$cmd" worker_sig="$sig"
-    worker_pid=
+    worker_pid= worker_ret=
     trap handle_EXIT_worker EXIT
     [ -n "$d" ] && chdir "$d"
     if [ -n "$l" ]; then
@@ -343,9 +347,11 @@ function handle_child_restart ()
   then="${tm_restart[$(( tm_restarts % tm_maxR ))]}"
 
   if [ -n "$then" ] && [ "$(( now - then ))" -lt "$tm_maxT" ]; then
+    ohai w 'maximum restarts reached' 'exiting'
     kill_children "$tm_pid"
     exit 1
   elif [ "$tm_restart_strategy" == one_for_all ]; then
+    ohai w 'restarting everyting (one_for_all)'
     kill_children "$tm_pid"
     exec "$0" "$@"
   fi
@@ -414,26 +420,3 @@ while :; do; wait && break; done
 ohai w 'done'
 
 # vim: set tw=70 sw=2 sts=2 et fdm=marker :
-
-# *** TODO ***
-
-# Kills processes; notifies; used by trap.
-# NB: we kill all direct child processes of >> $tm_sh -c <<.
-# TODO
-function cleanup_old ()
-{                                                               # {{{1
-  local k=0 i c j t
-  for (( i = 0; i < n_tasks; ++i )); do
-    c="${conc[i]}"
-    for (( j = 1; j <= c; ++j )); do
-      t="${tasks[i]}.$j"
-      kill_w_children -"${sigs[i]}" "${pids[k]}" &
-      (( ++k ))
-    done
-  done
-  wait
-}                                                               # }}}1
-
-# --
-
-
