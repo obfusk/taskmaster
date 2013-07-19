@@ -280,6 +280,7 @@ function spawn_temporary () { spawn; ohai_worker_exited; }
 # Usage: handle_EXIT_worker
 function handle_EXIT_worker ()
 {                                                               # {{{1
+  ohai w "exiting worker for $worker_t"
   local p
   for p in $( children "$BASHPID" ); do
     if [ "$p" == "$worker_pid" ]; then
@@ -317,25 +318,30 @@ function alive () { test -n "$( ps -p "$1" -o pid= )"; }
 # Usage: children <pid>
 function children ()
 {                                                               # {{{1
-  local pid="$1" p pp
-  while read -r p pp; do [ "$pp" == "$pid" ] && echo "$p"; done < \
-    <( ps -e -o pid= -o ppid= )
+  local pid="$1" p pp cmd ign=TASKMASTER_PS_IGNORE_ME
+  while read -r p pp cmd; do
+    [[ "$pp" == "$pid" -a "$cmd" != *"$ign"* ]] && echo "$p"
+  done < <( exec -a "$ign" ps -e -o pid= -o ppid= -o cmd= )
 }                                                               # }}}1
 
 # Usage: kill_v -<sig> <pid>
 function kill_v ()
-{ verbose && ohai w "kill $*"; kill "$@"; }
+{ verbose && ohai w "kill $*"; kill "$@" || true; }
 
 # Usage: kill_children <pid>
 function kill_children ()
-{ local pid="$1" p
-  for p in $( children "$pid" ); do kill_v -SIGTERM "$p"; done; }
+{                                                               # {{{1
+  local pid="$1" p
+  verbose && ohai w "killing children of $pid"
+  for p in $( children "$pid" ); do kill_v -SIGTERM "$p"; done;
+}                                                               # }}}1
 
 # Usage: kill_w_children -<sig> <pid>
 # Kills pid, sleeps 1 sec, kills remaining direct children.
 function kill_w_children ()                                     # {{{1
 {
   local sig="$1" pid="$2" p pp; local ps=( $( children "$pid" ) )
+  verbose && ohai w "killing $pid w/ children"
   kill_v "$sig" "$pid" ; sleep 1
   for p in "${ps[@]}"; do alive "$p" && kill_v "$sig" "$p"; done
   true
