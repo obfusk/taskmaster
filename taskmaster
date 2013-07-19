@@ -236,11 +236,11 @@ function worker ()
 function ohai_worker_exited ()
 { ohai "$worker_i" "$worker_t exited" "exit=$worker_ret"; }
 
-# Usage: spawn <i> <t> <l>
+# Usage: spawn
 # Sets $worker_{pid,ret}
 function spawn ()
 {                                                               # {{{1
-  local i="$1" t="$2" l="$3"
+  local i="$worker_i" t="$worker_t" l="$worker_l"
   if [ -n "$l" ]; then
     "$tm_sh" -c "$worker_cmd" >> "$l/$t-stdout.log" \
                              2>> "$l/$t-stderr.log" &
@@ -253,30 +253,29 @@ function spawn ()
   set +e; wait "$worker_pid"; worker_ret="$?"; set -e
 }                                                               # }}}1
 
-# Usage: spawn_permanent <i> <t> <cmd>
+# Usage: spawn_permanent
 function spawn_permanent ()
 {                                                               # {{{1
   while :; do
-    spawn "$i" "$t" "$cmd"; ohai_worker_exited
+    spawn; ohai_worker_exited
     kill -SIGUSR1 "$tm_pid"
     sleep .5
   done
 }                                                               # }}}1
 
-# Usage: spawn_transient <i> <t> <cmd>
+# Usage: spawn_transient
 function spawn_transient ()
 {                                                               # {{{1
   while :; do
-    spawn "$i" "$t" "$cmd"; ohai_worker_exited
+    spawn; ohai_worker_exited
     [ "$worker_ret" -eq 0 ] && break
     kill -SIGUSR1 "$tm_pid"
     sleep .5
   done
 }                                                               # }}}1
 
-# Usage: spawn_temporary <i> <t> <cmd>
-function spawn_temporary ()
-{ spawn "$i" "$t" "$cmd"; ohai_worker_exited; }
+# Usage: spawn_temporary
+function spawn_temporary () { spawn; ohai_worker_exited; }
 
 # Usage: handle_EXIT_worker
 function handle_EXIT_worker ()
@@ -291,20 +290,21 @@ function handle_EXIT_worker ()
 }                                                               # }}}1
 
 # Usage: spawn_worker <i> <j> <k> <t> <l> <d> <w> <cmd> <sig>
-# Sets $worker_i,t,cmd,sig,pid,ret,env}.
+# Sets $worker_{i,t,l,cmd,sig,pid,ret,env}.
 function spawn_worker ()
 {                                                               # {{{1
   local i="$1" j="$2" k="$3" t="$4" l="$5" d="$6" w="$7" cmd="$8"
   local sig="$9" pid
   (
-    worker_i="$i" worker_t="$t" worker_cmd="$cmd" worker_sig="$sig"
+    worker_i="$i" worker_t="$t" worker_l="$l"
+    worker_cmd="$cmd" worker_sig="$sig"
     worker_pid= worker_ret=
     eval "worker_env=( \"\${tm_env__${tasks[i]}[@]}\" )"        # TODO
     trap handle_EXIT_worker EXIT
     [ -n "$d" ] && chdir "$d"
     [ "${#tm_env[@]}"     -gt 0 ] && export "${tm_env[@]}"      # TODO
     [ "${#worker_env[@]}" -gt 0 ] && export "${worker_env[@]}"  # TODO
-    spawn_"$w" "$i" "$t" "$l"
+    spawn_"$w"
   ) & pid=$!
   verbose && ohai w "started worker for $t" "pid=$pid"
 }                                                               # }}}1
