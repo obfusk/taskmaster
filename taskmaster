@@ -110,12 +110,12 @@ function ensure_num ()
 
 # Usage: ensure_restart_strategy <value>
 function ensure_restart_strategy ()
-{ [[ "$1" == ^(one_for_all|one_for_one)$ ]] \
+{ [[ "$1" =~ ^(one_for_all|one_for_one)$ ]] \
     || die "not a restart strategy: $1"; }
 
 # Usage: ensure_worker <value>
 function ensure_worker ()
-{ [[ "$1" == ^(permanent|transient|temporary)$ ]] \
+{ [[ "$1" =~ ^(permanent|transient|temporary)$ ]] \
     || die "not a worker: $1"; }
 
 # --
@@ -162,7 +162,7 @@ function environment ()
   ohai w "environment $*"
   for (( i = 0; i < $#; ++i )); do
     local x="${@:$i:1}"
-    if [[ "$x" == ^$word$ ]]; then
+    if [[ "$x" =~ ^$word$ ]]; then
       ts+=( "$x" )
     else
       break
