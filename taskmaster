@@ -62,7 +62,7 @@ tm_rc="${TASKMASTERRC:-.taskmaster}"
 tm_tf="${TASKFILE:-Taskfile}"
 tm_sh="${TASKMASTER_SHELL:-bash}"
 
-tm_cwd= tm_logdir= tm_env=
+tm_cwd= tm_logdir= tm_env=()
 tm_restart_strategy=one_for_one tm_maxR=10 tm_maxT=60
 tm_worker=temporary
 
@@ -236,12 +236,20 @@ function worker ()
 function ohai_worker_exited ()
 { ohai "$worker_i" "$worker_t exited" "exit=$worker_ret"; }
 
-# Usage: spawn
+# Usage: spawn <i> <t> <l>
 # Sets $worker_{pid,ret}
 function spawn ()
 {                                                               # {{{1
-  "$tm_sh" -c "$worker_cmd" & worker_pid=$!
-  ohai "$worker_i" "starting $worker_t" "pid=$worker_pid"
+  local i="$1" t="$2" l="$3"
+  if [ -n "$l" ]; then
+    "$tm_sh" -c "$worker_cmd" >> "$l/$t-stdout.log" \
+                             2>> "$l/$t-stderr.log" &
+  else
+    "$tm_sh" -c "$worker_cmd" > >( log "$t" OUT "$i" >&3 ) \
+                             2> >( log "$t" ERR "$i" >&3 ) &
+  fi
+  worker_pid=$!
+  ohai "$worker_i" "started $worker_t" "pid=$worker_pid"
   set +e; wait "$worker_pid"; worker_ret="$?"; set -e
 }                                                               # }}}1
 
@@ -287,7 +295,7 @@ function handle_EXIT_worker ()
 function spawn_worker ()
 {                                                               # {{{1
   local i="$1" j="$2" k="$3" t="$4" l="$5" d="$6" w="$7" cmd="$8"
-  local sig="$9"
+  local sig="$9" pid
   (
     worker_i="$i" worker_t="$t" worker_cmd="$cmd" worker_sig="$sig"
     worker_pid= worker_ret=
@@ -296,14 +304,9 @@ function spawn_worker ()
     [ -n "$d" ] && chdir "$d"
     [ "${#tm_env[@]}"     -gt 0 ] && export "${tm_env[@]}"      # TODO
     [ "${#worker_env[@]}" -gt 0 ] && export "${worker_env[@]}"  # TODO
-    if [ -n "$l" ]; then
-      spawn_"$w" >> "$l/$t-stdout.log" \
-                2>> "$l/$t-stderr.log"
-    else
-      spawn_"$w" > >( log "$t" OUT "$i" >&3 ) \
-                2> >( log "$t" ERR "$i" >&3 )
-    fi
-  ) &
+    spawn_"$w" "$i" "$t" "$l"
+  ) & pid=$!
+  verbose && ohai w "started worker for $t" "pid=$pid"
 }                                                               # }}}1
 
 # --
@@ -362,10 +365,10 @@ function handle_child_restart ()
 }                                                               # }}}1
 
 # Usage: handle_INT
-function handle_INT () { ohai w 'SIGINT received'; }
+function handle_INT () { ohai w 'SIGINT received'; exit; }
 
 # Usage: handle_TERM
-function handle_TERM () {ohai w 'SIGTERM received'; }
+function handle_TERM () { ohai w 'SIGTERM received'; exit; }
 
 # Usage: handle_EXIT
 function handle_EXIT ()
@@ -428,7 +431,7 @@ trap handle_INT           INT
 trap handle_TERM          TERM
 trap handle_EXIT          EXIT
 
-while :; do; wait && break; done
+while :; do wait && break; done
 
 ohai w 'done'
 
