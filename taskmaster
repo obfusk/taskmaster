@@ -250,7 +250,7 @@ function spawn ()
   fi
   worker_pid=$!
   ohai "$worker_i" "started $worker_t" "pid=$worker_pid"
-  set +e; wait "$worker_pid"; worker_ret="$?"; set -e
+  set +e; wait "$worker_pid" 2>/dev/null; worker_ret="$?"; set -e
 }                                                               # }}}1
 
 # Usage: spawn_permanent
@@ -285,7 +285,7 @@ function handle_EXIT_worker ()
   for p in $( children "$pid" ); do
     if [ "$p" == "$worker_pid" ]; then
       ohai "$worker_i" "kill $worker_t" "signal=$worker_sig pid=$p"
-      kill_w_children "$worker_sig" "$p"
+      kill_w_children -"$worker_sig" "$p"
     fi
   done
 }                                                               # }}}1
@@ -375,8 +375,8 @@ function handle_child_restart ()
     exit 1
   elif [ "$tm_restart_strategy" == one_for_all ]; then
     ohai w 'restarting everyting (one_for_all)'
-    kill_children "$tm_pid" "${workers[@]}"
-    exec "$0" "$@"
+    kill_children "$tm_pid" "${workers[@]}" & wait
+    # main -- TODO
   fi
 }                                                               # }}}1
 
@@ -388,7 +388,12 @@ function handle_TERM () { ohai w 'SIGTERM received'; exit; }
 
 # Usage: handle_EXIT
 function handle_EXIT ()
-{ ohai w 'exiting'; kill_children "$tm_pid" "${workers[@]}"; }
+{                                                               # {{{1
+  if [ "$tm_done" == no ]; then
+    ohai w 'exiting'
+    kill_children "$tm_pid" "${workers[@]}" & wait
+  fi
+}                                                               # }}}1
 
 # --
 
@@ -416,6 +421,7 @@ function parse_Taskfile ()
 function start_tasks ()
 {                                                               # {{{1
   local c t l d w; local -i k=0 i j
+  workers=()
   for (( i = 0; i < n_tasks; ++i )); do
     eval "c=\${tm_concurrency__${tasks[i]}:-1}"; conc+=( "$c" )
     for (( j = 1; j <= c; ++j )); do
@@ -430,6 +436,20 @@ function start_tasks ()
   done
 }                                                               # }}}1
 
+# ...
+function main ()
+{
+  echo A
+  start_tasks
+  trap handle_child_restart SIGUSR1
+  trap handle_INT           INT
+  trap handle_TERM          TERM
+  trap handle_EXIT          EXIT
+  echo B
+  while :; do wait && break; done
+  echo C
+}
+
 # --
 
 ohai w 'starting...'
@@ -438,17 +458,12 @@ ohai w "TASKFILE $tm_tf"
 [ -e "$tm_rc" ] && { ohai w "TASKMASTERRC $tm_rc"; source "$tm_rc"; }
 [ "$#" -gt 0 ] && concurrency "$@"
 
-tasks=() cmds=() sigs=() pids=() conc=() workers=()
+tasks=() cmds=() sigs=() pids=() conc=()
+workers= tm_done=no
 
-parse_Taskfile; start_tasks
-
-trap handle_child_restart SIGUSR1
-trap handle_INT           INT
-trap handle_TERM          TERM
-trap handle_EXIT          EXIT
-
-while :; do wait && break; done
-
+parse_Taskfile
+main
+tm_done=yes
 ohai w 'done'
 
 # vim: set tw=70 sw=2 sts=2 et fdm=marker :
