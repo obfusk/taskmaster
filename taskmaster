@@ -169,6 +169,9 @@ function environment ()
     fi
   done
   env=( "${@:$i:$(($#-i))}" )
+  for x in "${env[@]}"; do
+    [[ "$x" =~ ^($word)= ]] || die "not a <word>=...: $x"
+  done
 
   if [ "${#ts[@]}" -eq 0 ]; then
     tm_env=( "${env[@]}" )
@@ -201,7 +204,7 @@ function concurrency ()
 # Sets $tm_restart_strategy.
 function restart_strategy ()
 { ohai w "restart_strategy $1"
-  ensure_restart_strategy "$1"; tm_supervisor="$1"; }
+  ensure_restart_strategy "$1"; tm_restart_strategy="$1"; }
 
 # Usage: max_restart <maxR> <maxT>
 # Sets $tm_maxR, $tm_maxT.
@@ -280,16 +283,19 @@ function handle_EXIT_worker ()
 }                                                               # }}}1
 
 # Usage: spawn_worker <i> <j> <k> <t> <l> <d> <w> <cmd> <sig>
-# Sets $worker_i,t,cmd,sig,pid,ret}.
+# Sets $worker_i,t,cmd,sig,pid,ret,env}.
 function spawn_worker ()
 {                                                               # {{{1
   local i="$1" j="$2" k="$3" t="$4" l="$5" d="$6" w="$7" cmd="$8"
-  local sig="$9" run=(  )
+  local sig="$9"
   (
     worker_i="$i" worker_t="$t" worker_cmd="$cmd" worker_sig="$sig"
     worker_pid= worker_ret=
+    eval "worker_env=( \"\${tm_env__${tasks[i]}[@]}\" )"        # TODO
     trap handle_EXIT_worker EXIT
     [ -n "$d" ] && chdir "$d"
+    [ "${#tm_env[@]}"     -gt 0 ] && export "${tm_env[@]}"      # TODO
+    [ "${#worker_env[@]}" -gt 0 ] && export "${worker_env[@]}"  # TODO
     if [ -n "$l" ]; then
       spawn_"$w" >> "$l/$t-stdout.log" \
                 2>> "$l/$t-stderr.log"
@@ -339,13 +345,11 @@ function kill_w_children ()                                     # {{{1
 function handle_child_restart ()
 {                                                               # {{{1
   local now then
-  echo "USR1 - child restarted"
-
+  ohai w 'a child has restarted'
   now="$( secs )"
   tm_restart["$(( tm_restarts % tm_maxR ))"]="$now"
   (( ++tm_restarts ))
   then="${tm_restart[$(( tm_restarts % tm_maxR ))]}"
-
   if [ -n "$then" ] && [ "$(( now - then ))" -lt "$tm_maxT" ]; then
     ohai w 'maximum restarts reached' 'exiting'
     kill_children "$tm_pid"
@@ -357,8 +361,15 @@ function handle_child_restart ()
   fi
 }                                                               # }}}1
 
+# Usage: handle_INT
+function handle_INT () { ohai w 'SIGINT received'; }
+
+# Usage: handle_TERM
+function handle_TERM () {ohai w 'SIGTERM received'; }
+
 # Usage: handle_EXIT
-function handle_EXIT () { kill_children "$tm_pid"; }
+function handle_EXIT ()
+{ ohai w 'exiting'; kill_children "$tm_pid"; }
 
 # --
 
@@ -369,7 +380,7 @@ function parse_Taskfile ()
 {                                                               # {{{1
   local task cmd t s c
   while read task cmd; do
-    [[ "$task" =~ ^($word):$ ]] || die "not a <task>: $task"
+    [[ "$task" =~ ^($word):$ ]] || die "not a '<task>:': $task"
     t="${BASH_REMATCH[1]}"
     if [[ "$cmd" =~ ^(SIG[A-Z0-9]+\ *)(.*)$ ]]; then
       s="${BASH_REMATCH[1]}" c="${BASH_REMATCH[2]}"
@@ -413,7 +424,9 @@ tasks=() cmds=() sigs=() pids=() conc=()
 parse_Taskfile; start_tasks
 
 trap handle_child_restart SIGUSR1
-trap handle_EXIT EXIT
+trap handle_INT           INT
+trap handle_TERM          TERM
+trap handle_EXIT          EXIT
 
 while :; do; wait && break; done
 
