@@ -4,7 +4,7 @@
 #
 # File        : taskmaster
 # Maintainer  : Felix C. Stegerman <flx@obfusk.net>
-# Date        : 2013-07-18
+# Date        : 2013-07-19
 #
 # Copyright   : Copyright (C) 2013  Felix C. Stegerman
 # Licence     : GPLv2
@@ -13,13 +13,13 @@
 
 set -e
 
-# use fd 3 for logging output b/c stderr > stdout otherwise
-# WTF: no output if redirected to file w/o >&3
-exec 3>/dev/stdout >&3
-
 if [ "$1" == --help ]; then
   echo 'Usage: taskmaster [ <task>=<n> ... ]' >&2; exit 0
 fi
+
+# use fd 3 for logging output b/c stderr > stdout otherwise
+# WTF: no output if redirected to file w/o >&3
+exec 3>/dev/stdout >&3
 
 # --
 
@@ -33,7 +33,9 @@ c_d_gray='1;30'   c_l_blue='1;34' c_l_green='1;32'  c_l_cyan='1;36'
 colours=(
     $c_cyan   $c_brown   $c_green   $c_purple   $c_red   $c_blue
   $c_l_cyan $c_yellow  $c_l_green $c_l_purple $c_l_red $c_l_blue
-) ; n_colours="${#colours[@]}" esc=$'\e'
+) ; n_colours="${#colours[@]}"
+
+word='[A-Za-z0-9]+' num='[0-9]+' esc=$'\e'
 
 # Usage: colour <msg> { <i> | w }
 function colour ()
@@ -51,20 +53,28 @@ function colour ()
   fi
 }                                                               # }}}1
 
+# Usage: verbose
+function verbose () { [ "$VERBOSE" == yes ]; }
+
 # --
 
 tm_rc="${TASKMASTERRC:-.taskmaster}"
 tm_tf="${TASKFILE:-Taskfile}"
 tm_sh="${TASKMASTER_SHELL:-bash}"
 
-tm_cwd= tm_logdir= tm_supervisor= tm_env=
+tm_cwd= tm_logdir= tm_env=
+tm_restart_strategy=one_for_one tm_maxR=10 tm_maxT=60
+tm_worker=temporary
 
-word='[A-Za-z0-9]+' num='[0-9]+'
+tm_pid="$$" tm_restart=() tm_restarts=0
 
 # --
 
 # Usage: dt
 function dt () { date +'%F %T'; }
+
+# Usage: secs
+function secs () { date +'%s'; }
 
 # Usage: die
 function die () { echo "$@" >&2; exit 1; }
@@ -78,69 +88,78 @@ function ohai ()
   echo "[ $o ]"
 }                                                               # }}}1
 
+# Usage: log <task> { OUT | ERR } { <i> | w }
+# Reads from STDIN, then writes to STDOUT w/ extra info.
+function log ()
+{                                                               # {{{1
+  local task="$1" what="$2" i="$3" REPLY
+  while read -r; do
+    printf '%s %s\n' "$( colour "$(dt) $what $task |" "$i" )" "$REPLY"
+  done
+}                                                               # }}}1
+
+# --
+
 # Usage: ensure_word <value>
 function ensure_word ()
 { [[ "$1" =~ ^$word$ ]] || die "not a word: $1"; }
 
+# Usage: ensure_num <value>
+function ensure_num ()
+{ [[ "$1" =~ ^$num$ ]] || die "not a number: $1"; }
+
+# Usage: ensure_restart_strategy <value>
+function ensure_restart_strategy ()
+{ [[ "$1" == ^(one_for_all|one_for_one)$ ]] \
+    || die "not a restart strategy: $1"; }
+
+# Usage: ensure_worker <value>
+function ensure_worker ()
+{ [[ "$1" == ^(permanent|transient|temporary)$ ]] \
+    || die "not a worker: $1"; }
+
 # --
 
 # Usage: cwd [<task(s)>] <dir>
-# Sets $tm_cwd or $tm_cwd__$task.
+# Sets $tm_cwd or $tm_cwd__{$task*}.
 function cwd ()
 {                                                               # {{{1
   ohai w "cwd $*"
   if [ "$#" -eq 1 ]; then
     tm_cwd="$1"
-    [ "$VERBOSE" == yes ] && ohai w "cwd=$tm_cwd"
+    verbose && ohai w "cwd=$tm_cwd"
   else
     local x d="${@:$#:1}"
     for x in "${@:1:$(($#-1))}"; do
       ensure_word "$x"; eval "tm_cwd__$x=\$d"
-      [ "$VERBOSE" == yes ] && ohai w "cwd[$x]=$d"
+      verbose && ohai w "cwd[$x]=$d"
     done
   fi
 }                                                               # }}}1
 
 # Usage: logdir [<task(s)>] <dir>
-# Sets $tm_logdir or $tm_logdir__$task.
+# Sets $tm_logdir or $tm_logdir__{$task*}.
 function logdir ()
 {                                                               # {{{1
   ohai w "logdir $*"
   if [ "$#" -eq 1 ]; then
     tm_logdir="$1"
-    [ "$VERBOSE" == yes ] && ohai w "logdir=$tm_logdir"
+    verbose && ohai w "logdir=$tm_logdir"
   else
     local x d="${@:$#:1}"
     for x in "${@:1:$(($#-1))}"; do
       ensure_word "$x"; eval "tm_logdir__$x=\$d"
-      [ "$VERBOSE" == yes ] && ohai w "logdir[$x]=$d"
-    done
-  fi
-}                                                               # }}}1
-
-# Usage: supervisor [<task(s)>] { respawn | killall | die }
-# Sets $tm_supervisor or $tm_supervisor__$task.
-function supervisor ()
-{                                                               # {{{1
-  ohai w "supervisor $*"
-  if [ "$#" -eq 1 ]; then
-    tm_supervisor="$1"
-    [ "$VERBOSE" == yes ] && ohai w "supervisor=$tm_supervisor"
-  else
-    local x s="${@:$#:1}"
-    for x in "${@:1:$(($#-1))}"; do
-      ensure_word "$x"; eval "tm_supervisor__$x=\$s"
-      [ "$VERBOSE" == yes ] && ohai w "supervisor[$x]=$s"
+      verbose && ohai w "logdir[$x]=$d"
     done
   fi
 }                                                               # }}}1
 
 # Usage: environment [<task(s)>] VAR1=VAL1 ...
-# Sets $tm_env or $tm_env__$task.
+# Sets $tm_env or $tm_env__{$task*}.
 function environment ()
 {                                                               # {{{1
-  ohai w "environment $*"
   local ts=() env i x
+  ohai w "environment $*"
   for (( i = 0; i < $#; ++i )); do
     local x="${@:$i:1}"
     if [[ "$x" == ^$word$ ]]; then
@@ -153,119 +172,250 @@ function environment ()
 
   if [ "${#ts[@]}" -eq 0 ]; then
     tm_env=( "${env[@]}" )
-    [ "$VERBOSE" == yes ] && ohai w "env=${tm_env[*]}"
+    verbose && ohai w "env=${tm_env[*]}"
   else
     for x in "${ts[@]}"; do
       eval "tm_env__$x=( \"\${env[@]}\" )"
-      [ "$VERBOSE" == yes ] && ohai w "env[$x]=${env[*]}"
+      verbose && ohai w "env[$x]=${env[*]}"
     done
   fi
 }                                                               # }}}1
 
 # Usage: concurrency <task1>=<n1> <task2>=<n2> ...
-# Sets $tm_concurrency__$task; should be called in $TASKMASTERRC.
+# Sets $tm_concurrency__{$task*}; should be called in $TASKMASTERRC.
 function concurrency ()
 {                                                               # {{{1
-  ohai w "concurrency $*"
   local x t n
+  ohai w "concurrency $*"
   for x in "$@"; do
     [[ "$x" =~ ^($word)=($num)$ ]] || die "not a <word>=<num>: $x"
     t="${BASH_REMATCH[1]}" n="${BASH_REMATCH[2]}"
     eval "tm_concurrency__$t=$n"
-    [ "$VERBOSE" == yes ] && ohai w "concurrency[$t]=$n"
+    verbose && ohai w "concurrency[$t]=$n"
+  done
+}                                                               # }}}1
+
+# --
+
+# Usage: restart_strategy { one_for_all | one_for_one }
+# Sets $tm_restart_strategy.
+function restart_strategy ()
+{ ohai w "restart_strategy $1"
+  ensure_restart_strategy "$1"; tm_supervisor="$1"; }
+
+# Usage: max_restart <maxR> <maxT>
+# Sets $tm_maxR, $tm_maxT.
+function max_restart ()
+{ ohai w "max_restart $*"
+  ensure_num "$1"; ensure_num "$2"; tm_maxR="$1" tm_maxT="$2"; }
+
+# Usage: worker [<task(s)>] { permanent | transient | temporary }
+# Sets $tm_worker or $tm_worker__${task*}.
+function worker ()
+{                                                               # {{{1
+  ohai w "worker $*"
+  if [ "$#" -eq 1 ]; then
+    ensure_worker "$1"; tm_worker="$1"
+    verbose && ohai w "worker=$tm_worker"
+  else
+    local x d="${@:$#:1}"
+    ensure_worker "$d"
+    for x in "${@:1:$(($#-1))}"; do
+      ensure_word "$x"; eval "tm_worker__$x=\$d"
+      verbose && ohai w "worker[$x]=$d"
+    done
+  fi
+}                                                               # }}}1
+
+# --
+
+# Usage: spawn
+# Sets $worker_pid.
+function spawn ()
+{                                                               # {{{1
+  "$tm_sh" -c "$worker_cmd" & worker_pid=$!
+  ohai "$worker_i" "start $worker_t" "pid=$worker_pid"
+  set +e; wait "$worker_pid"; ret="$?"; set -e
+  return "$ret"
+}                                                               # }}}1
+
+# Usage: spawn_permanent <i> <t> <cmd>
+function spawn_permanent ()
+{                                                               # {{{1
+  while :; do
+    spawn "$i" "$t" "$cmd" || true
+    kill -SIGUSR1 "$tm_pid"
+    sleep .5
+  done
+}                                                               # }}}1
+
+# Usage: spawn_transient <i> <t> <cmd>
+function spawn_transient ()
+{                                                               # {{{1
+  while :; do
+    spawn "$i" "$t" "$cmd" && break
+    kill -SIGUSR1 "$tm_pid"
+    sleep .5
+  done
+}                                                               # }}}1
+
+# Usage: spawn_temporary <i> <t> <cmd>
+function spawn_temporary ()
+{ spawn "$i" "$t" "$cmd" || true; }
+
+# Usage: handle_EXIT_worker
+function handle_EXIT_worker ()
+{                                                               # {{{1
+  local p
+  for p in $( children "$BASHPID" ); do
+    if [ "$p" == "$worker_pid" ]; then
+      ohai "$worker_i" "kill $worker_t" "signal=$worker_sig pid=$p}"
+      kill_w_children "$worker_sig" "$p"
+    fi
+  done
+}                                                               # }}}1
+
+# Usage: spawn_worker <i> <j> <k> <t> <l> <d> <w> <cmd> <sig>
+# Sets $worker_i,t,cmd,sig,pid}.
+function spawn_worker ()
+{                                                               # {{{1
+  local i="$1" j="$2" k="$3" t="$4" l="$5" d="$6" w="$7" cmd="$8"
+  local sig="$9" run=(  )
+  (
+    worker_i="$i" worker_t="$t" worker_cmd="$cmd" worker_sig="$sig"
+    worker_pid=
+    trap handle_EXIT_worker EXIT
+    [ -n "$d" ] && chdir "$d"
+    if [ -n "$l" ]; then
+      spawn_"$w" >> "$l/$t-stdout.log" \
+                2>> "$l/$t-stderr.log"
+    else
+      spawn_"$w" > >( log "$t" OUT "$i" >&3 ) \
+                2> >( log "$t" ERR "$i" >&3 )
+    fi
+  ) &
+}                                                               # }}}1
+
+# --
+
+# Usage: alive <pid>
+function alive () { test -n "$( ps -p "$1" -o pid= )"; }
+
+# Usage: children <pid>
+function children ()
+{                                                               # {{{1
+  local pid="$1" p pp
+  while read -r p pp; do [ "$pp" == "$pid" ] && echo "$p"; done < \
+    <( ps -e -o pid= -o ppid= )
+}                                                               # }}}1
+
+# Usage: kill_v -<sig> <pid>
+function kill_v ()
+{ verbose && ohai w "kill $*"; kill "$@"; }
+
+# Usage: kill_children <pid>
+function kill_children ()
+{ local pid="$1" p
+  for p in $( children "$pid" ); do kill_v -SIGTERM "$p"; done; }
+
+# Usage: kill_w_children -<sig> <pid>
+# Kills pid, sleeps 1 sec, kills remaining direct children.
+function kill_w_children ()                                     # {{{1
+{
+  local sig="$1" pid="$2" p pp; local ps=( $( children "$pid" ) )
+  kill_v "$sig" "$pid" ; sleep 1
+  for p in "${ps[@]}"; do alive "$p" && kill_v "$sig" "$p"; done
+  true
+}                                                               # }}}1
+
+# --
+
+# Usage: handle_child_restart
+# Handle child restarted (SIGUSR1).
+function handle_child_restart ()
+{                                                               # {{{1
+  local now then
+  echo "USR1 - child restarted"
+
+  now="$( secs )"
+  tm_restart["$(( tm_restarts % tm_maxR ))"]="$now"
+  (( ++tm_restarts ))
+  then="${tm_restart[$(( tm_restarts % tm_maxR ))]}"
+
+  if [ -n "$then" ] && [ "$(( now - then ))" -lt "$tm_maxT" ]; then
+    kill_children "$tm_pid"
+    exit 1
+  elif [ "$tm_restart_strategy" == one_for_all ]; then
+    kill_children "$tm_pid"
+    exec "$0" "$@"
+  fi
+}                                                               # }}}1
+
+# Usage: handle_EXIT
+function handle_EXIT () { kill_children "$tm_pid"; }
+
+# --
+
+# Usage: parse_Taskfile
+# Parse $tm_tf; read w/o -r allows for continuation lines; appends to
+# $tasks, $cmds, $sigs; sets $n_tasks.
+function parse_Taskfile ()
+{                                                               # {{{1
+  local task cmd t s c
+  while read task cmd; do
+    [[ "$task" =~ ^($word):$ ]] || die "not a <task>: $task"
+    t="${BASH_REMATCH[1]}"
+    if [[ "$cmd" =~ ^(SIG[A-Z0-9]+\ *)(.*)$ ]]; then
+      s="${BASH_REMATCH[1]}" c="${BASH_REMATCH[2]}"
+    else
+      s=SIGTERM c="$cmd"
+    fi
+    tasks+=( "$t" ); cmds+=( "$c" ); sigs+=( "$s" )
+  done < "$tm_tf"
+  n_tasks="${#cmds[@]}"
+}                                                               # }}}1
+
+# Usage: start_tasks
+# Start commands w/ concurrency; uses config; appends to $conc.
+function start_tasks ()
+{                                                               # {{{1
+  local c t l d w; local -i k=0 i j
+  for (( i = 0; i < n_tasks; ++i )); do
+    eval "c=\${tm_concurrency__${tasks[i]}:-1}"; conc+=( "$c" )
+    for (( j = 1; j <= c; ++j )); do
+      t="${tasks[i]}.$j"
+      eval "l=\${tm_logdir__${tasks[i]}:-\$tm_logdir}"
+      eval "d=\${tm_cwd__${tasks[i]}:-\$tm_cwd}"
+      eval "w=\${tm_worker__${tasks[i]}:-\$tm_worker}"
+      spawn_worker "$i" "$j" "$k" "$t" "$l" "$d" "$w" \
+        "${cmds[i]}" "${sigs[i]}"
+      (( ++k ))
+    done
   done
 }                                                               # }}}1
 
 # --
 
 ohai w 'starting...'
+ohai w "TASKFILE $tm_tf"
 
 [ -e "$tm_rc" ] && { ohai w "TASKMASTERRC $tm_rc"; source "$tm_rc"; }
 [ "$#" -gt 0 ] && concurrency "$@"
 
 tasks=() cmds=() sigs=() pids=() conc=()
 
-# --
+parse_Taskfile; start_tasks
 
-# Usage: log <task> { OUT | ERR } { <i> | w }
-# Reads from STDIN, then writes to STDOUT w/ extra info.
-function log ()
-{                                                               # {{{1
-  local task="$1" what="$2" i="$3" REPLY
-  while read -r; do
-    printf '%s %s\n' "$( colour "$(dt) $what $task |" "$i" )" "$REPLY"
-  done
-}                                                               # }}}1
+trap handle_child_restart SIGUSR1
+trap handle_EXIT EXIT
 
-# Usage: alive <pid>
-function alive () { test -n "$( ps -p "$1" -o pid= )"; }
+while :; do; wait && break; done
 
-# Usage: kill_ -<sig> <pid>
-function kill_ ()
-{ [ "$VERBOSE" == yes ] && ohai w "kill $*"; kill "$@"; }
+ohai w 'done'
 
-# Usage: kill_w_children -<sig> <pid>
-# TODO
-# Kills pid, sleeps 1 sec, kills remaining direct children
-function kill_w_children ()                                     # {{{1
-{
-  local sig="$1" pid="$2" p pp ps=()
-  while read -r p pp; do [ "$pp" == "$pid" ] && ps+=( "$p" ); done < \
-    <( ps -e -o pid= -o ppid= )
-  alive "$pid" && kill_ "$sig" "$pid" ; sleep 1
-  for p in "${ps[@]}"; do alive "$p" && kill_ "$sig" "$p"; done
-  true
-}                                                               # }}}1
+# vim: set tw=70 sw=2 sts=2 et fdm=marker :
 
-# --
-
-# Usage: spawn <cmd>
-function spawn () { "$tm_sh" -c "$1"; }
-
-# Usage: supervise <i> <k> <t> <cmd> { respawn | killall | die }
-# TODO: maxR + maxT
-function supervise ()
-{
-  local i="$1" k="$2" t="$3" cmd="$4" sup="$5"
-  spawn "$cmd" & local pid=$!
-  echo spawned "$pid" >&4
-  wait "$pid"
-  echo "$sup" "$i" "$k" "$t" "$pid" "$?" >&4
-  [ "$sup" == respawn ] && spawn "$@"
-}
-
-# Usage: tm_supervisor
-# TODO
-function tm_supervisor ()
-{                                                               # {{{1
-  local cmd pids=() x i k t pid; local -i n=-1 n_dead=0
-  while read -r -a cmd; do
-    case "${cmd[0]}" in
-      shutdown)
-        for x in "${pids[@]}"; do
-          ohai w "killing $x"
-          kill -SIGTERM "$x"
-        done
-      ;;
-      start)
-        ohai w "starting supervisor"
-        n="${cmd[1]}"; [ "$n_dead" -eq "$n" ] && return 0
-      ;;
-      spawned)
-        sup="${cmd[0]}" i="${cmd[1]}" k="${cmd[2]}" t="${cmd[3]}"
-        pid="${cmd[4]}" ret="${cmd[5]}"
-        ohai "$i" "start $t" "pid=$pid"
-        pids["$k"]="$pid"
-      ;;
-      # ...
-    esac
-  done
-  return 1
-}                                                               # }}}1
-
-# --
-
-function cleanup () { echo shutdown >&4; wait "$sup"; }
+# *** TODO ***
 
 # Kills processes; notifies; used by trap.
 # NB: we kill all direct child processes of >> $tm_sh -c <<.
@@ -277,7 +427,6 @@ function cleanup_old ()
     c="${conc[i]}"
     for (( j = 1; j <= c; ++j )); do
       t="${tasks[i]}.$j"
-      ohai "$i" "kill $t" "signal=${sigs[i]} pid=${pids[k]}"
       kill_w_children -"${sigs[i]}" "${pids[k]}" &
       (( ++k ))
     done
@@ -287,61 +436,4 @@ function cleanup_old ()
 
 # --
 
-ohai w "TASKFILE $tm_tf"
 
-# Parse $tm_tf; read w/o -r allows for continuation lines; appends to
-# $tasks, $cmds, $sigs.
-while read task cmd; do                                         # {{{1
-  [[ "$task" =~ ^($word):$ ]] || die "not a <task>: $task"
-  t="${BASH_REMATCH[1]}"
-  if [[ "$cmd" =~ ^(SIG[A-Z0-9]+\ *)(.*)$ ]]; then
-    s="${BASH_REMATCH[1]}" c="${BASH_REMATCH[2]}"
-  else
-    s=SIGTERM c="$cmd"
-  fi
-  tasks+=( "$t" ); cmds+=( "$c" ); sigs+=( "$s" )
-done < "$tm_tf"                                                 # }}}1
-
-n_tasks="${#cmds[@]}"
-
-# TODO
-# coproc SUPERVISOR ( tm_supervisor ); sup=$!
-
-# Start commands w/ concurrency; uses $tm_logdir_$task/$tm_logdir/log;
-# appends to $conc, $pids; notifies.
-k=0
-for (( i = 0; i < n_tasks; ++i )); do                           # {{{1
-  eval "c=\${tm_concurrency__${tasks[i]}:-1}"; conc+=( "$c" )
-  for (( j = 1; j <= c; ++j )); do
-    t="${tasks[i]}.$j"
-    eval "l=\${tm_logdir__${tasks[i]}:-\$tm_logdir}"
-    eval "d=\${tm_cwd__${tasks[i]}:-\$tm_cwd}"
-    eval "s=\${tm_supervisor__${tasks[i]}:-\$tm_supervisor}"
-    [ -n "$d" ] && { pushd "$d" >/dev/null || exit 1; }
-      run=( supervise "$i" "$k" "$t" "${cmds[i]}" "${s:-die}" )
-      if [ -n "$l" ]; then
-        "${run[@]}" >> "$l/$t-stdout.log" \
-                   2>> "$l/$t-stderr.log" &
-      else
-        "${run[@]}" > >( log "$t" OUT "$i" >&3 ) \
-                   2> >( log "$t" ERR "$i" >&3 ) &
-      fi
-      pids+=( $! )
-    [ -n "$d" ] && { popd >/dev/null || exit 1; }
-    (( ++k ))
-  done
-done                                                            # }}}1
-
-# --
-
-trap cleanup SIGINT SIGTERM
-
-echo start "${#pids[@]}" >&4
-
-if [ "${#pids[@]}" -eq 0 ]; then
-  ohai w 'no processes to start'
-else
-  ohai w 'done'
-fi
-
-# vim: set tw=70 sw=2 sts=2 et fdm=marker :
