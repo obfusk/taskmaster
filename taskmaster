@@ -356,8 +356,10 @@ function spawn_transient ()
   while :; do
     spawn; ohai_process_exited
     [ "$worker_ret" -eq 0 ] && break
+    verbose && ohai w "worker restarting" "tell $tm_pid" \
+                      "pid=$BASHPID task=$worker_t"
     kill -SIGUSR1 "$tm_pid"
-    sleep .5
+    sleep 2
   done
 }                                                               # }}}1
 
@@ -367,18 +369,26 @@ function spawn_permanent ()
 {                                                               # {{{1
   while :; do
     spawn; ohai_process_exited
+    verbose && ohai w "worker restarting" "tell $tm_pid" \
+                      "pid=$BASHPID task=$worker_t"
     kill -SIGUSR1 "$tm_pid"
-    sleep .5
+    sleep 2
   done
 }                                                               # }}}1
 
 # --
 
+# Usage: handle_TERM_worker
+# WORKER; TERM -> exit.
+function handle_TERM_worker ()
+{ verbose && ohai w "worker recieved TERM" \
+    "pid=$BASHPID task=$worker_t"; exit 2; }
+
 # Usage: handle_EXIT_worker
 # WORKER; handles EXIT by killing process; uses $worker{t,i,sig}.
 function handle_EXIT_worker ()
 {                                                               # {{{1
-  verbose && ohai w "worker for $worker_t exiting"
+  verbose && ohai w "worker exiting" "pid=$BASHPID task=$worker_t"
   local pid="$BASHPID" p
   for p in $( children "$pid" ); do
     if [ "$p" == "$worker_pid" ]; then
@@ -403,11 +413,12 @@ function spawn_worker ()
     worker_env=( TASK="${tasks[i]}" TASK_N="$i" "${tm_env[@]}" )
     is_array "tm_env__${tasks[i]}" \
       && eval "worker_env+=( \"\${tm_env__${tasks[i]}[@]}\" )"
+    trap handle_TERM_worker TERM
     trap handle_EXIT_worker EXIT
     [ -n "$d" ] && cd "$d"; spawn_"$w"
   ) & pid=$!
   workers+=( "$pid" )
-  verbose && ohai w "worker for $t started" "pid=$pid"
+  verbose && ohai w "worker started" "pid=$BASHPID task=$worker_t"
   true
 }                                                               # }}}1
 
@@ -433,7 +444,7 @@ function handle_child_restart ()
     exit 3
   elif [ "$tm_restart_strategy" == one_for_all ]; then
     ohai w 'restarting all workers (one_for_all)'
-    cleanup; main
+    cleanup; restart_main=yes
   fi
 }                                                               # }}}1
 
@@ -448,7 +459,8 @@ function handle_TERM () { ohai w 'SIGTERM received'; exit 2; }
 # Usage: handle_EXIT
 # Handle EXIT by cleaning up unless $tm_done.
 function handle_EXIT ()
-{ if [ "$tm_done" == no ]; then ohai w 'exiting'; cleanup; fi; }
+{ if [ "$tm_done" == no ]; then
+    ohai w 'exiting'; cleanup; sleep 1; fi; }
 
 # --
 
@@ -497,6 +509,7 @@ function start_tasks ()
 # to call this function again, when restarting all worker.
 function main ()
 {                                                               # {{{1
+  # ps -H -o pid,ppid,command # DEBUG
   verbose && ohai w 'starting main loop, tasks ...'
   start_tasks
   trap handle_child_restart SIGUSR1
@@ -511,13 +524,19 @@ function main ()
 # --
 
 if [ -e "$tm_rc" ]; then rc="$tm_rc"; else rc=; fi
-ohai w 'starting...'
+ohai w 'starting ...'
 ohai w "TASKFILE=$tm_tf TASKMASTERRC=$rc"
 [ -n "$rc" ] && source "$rc"; [ "$#" -gt 0 ] && concurrency "$@"
 
-tasks=() cmds=() sigs=()    # will be set once
-conc= workers= tm_done=no   # can be set multiple times
+tasks=() cmds=() sigs=()                  # set once
+conc= workers= tm_done=no restart_main=   # >= once?
 
-parse_Taskfile; main; tm_done=yes; ohai w 'done'
+parse_Taskfile
+while :; do
+  restart_main=no; main; [ "$restart_main" == yes ] || break
+  sleep 2
+done
+tm_done=yes
+ohai w 'done'
 
 # vim: set tw=70 sw=2 sts=2 et fdm=marker :
