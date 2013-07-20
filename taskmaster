@@ -144,12 +144,13 @@ function ensure_worker ()
 # Sets $tm_cwd or $tm_cwd__{$task*}; for TASKMASTERRC.
 function cwd ()
 {                                                               # {{{1
-  if [ "$#" -eq 1 ]; then
+  local a=( "$@" )
+  if [ "${#a[@]}" -eq 1 ]; then
     tm_cwd="$1"
     verbose && ohai w "cwd=$tm_cwd"
   else
-    local x d="${@:$#:1}"
-    for x in "${@:1:$(($#-1))}"; do
+    local x d="${a[@]: -1}"
+    for x in "${a[@]:0:$((${#a[@]}-1))}"; do
       ensure_word "$x"; eval "tm_cwd__$x=\$d"
       verbose && ohai w "cwd[$x]=$d"
     done
@@ -161,12 +162,13 @@ function cwd ()
 # Sets $tm_logdir or $tm_logdir__{$task*}; for TASKMASTERRC.
 function logdir ()
 {                                                               # {{{1
-  if [ "$#" -eq 1 ]; then
+  local a=( "$@" )
+  if [ "${#a[@]}" -eq 1 ]; then
     tm_logdir="$1"
     verbose && ohai w "logdir=$tm_logdir"
   else
-    local x d="${@:$#:1}"
-    for x in "${@:1:$(($#-1))}"; do
+    local x d="${a[@]: -1}"
+    for x in "${a[@]:0:$((${#a[@]}-1))}"; do
       ensure_word "$x"; eval "tm_logdir__$x=\$d"
       verbose && ohai w "logdir[$x]=$d"
     done
@@ -178,12 +180,12 @@ function logdir ()
 # Appends to $tm_env or $tm_env__{$task*}; for TASKMASTERRC.
 function environment ()
 {                                                               # {{{1
-  local ts=() env i x
-  for (( i = 0; i < $#; ++i )); do
-    local x="${@:$i:1}"
+  local a=( "$@" ) ts=() env i x
+  for (( i = 0; i < ${#a[@]}; ++i )); do
+    local x="${a[@]:$i:1}"
     if [[ "$x" =~ ^$word$ ]]; then ts+=( "$x" ); else break; fi
   done
-  env=( "${@:$i:$(($#-i))}" )
+  env=( "${a[@]:$i:$((${#a[@]}-i))}" )
   for x in "${env[@]}"; do
     [[ "$x" =~ ^($word)= ]] || die "not a <word>=...: $x"
   done
@@ -233,14 +235,15 @@ function max_restart ()
 # Sets $tm_worker or $tm_worker__${task*}; for TASKMASTERRC.
 function worker ()
 {                                                               # {{{1
-  if [ "$#" -eq 1 ]; then
+  local a=( "$@" )
+  if [ "${#a[@]}" -eq 1 ]; then
     ensure_worker "$1"; tm_worker="$1"
     verbose && ohai w "worker=$tm_worker"
   else
-    local x d="${@:$#:1}"; ensure_worker "$d"
-    for x in "${@:1:$(($#-1))}"; do
-      ensure_word "$x"; eval "tm_worker__$x=\$d"
-      verbose && ohai w "worker[$x]=$d"
+    local x t="${a[@]: -1}"; ensure_worker "$t"
+    for x in "${a[@]:0:$((${#a[@]}-1))}"; do
+      ensure_word "$x"; eval "tm_worker__$x=\$t"
+      verbose && ohai w "worker[$x]=$t"
     done
   fi
   true
@@ -496,7 +499,8 @@ function main ()
 # --
 
 if [ -e "$tm_rc" ]; then rc="$tm_rc"; else rc=; fi
-ohai w 'starting...' "TASKFILE=$tm_tf TASKMASTERRC=$rc"
+ohai w 'starting...'
+ohai w "TASKFILE=$tm_tf TASKMASTERRC=$rc"
 [ -n "$rc" ] && source "$rc"; [ "$#" -gt 0 ] && concurrency "$@"
 
 tasks=() cmds=() sigs=()    # will be set once
