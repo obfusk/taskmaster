@@ -4,7 +4,7 @@
 #
 # File        : taskmaster
 # Maintainer  : Felix C. Stegerman <flx@obfusk.net>
-# Date        : 2013-07-19
+# Date        : 2013-07-20
 #
 # Copyright   : Copyright (C) 2013  Felix C. Stegerman
 # Licence     : GPLv2
@@ -33,9 +33,9 @@ c_d_gray='1;30'   c_l_blue='1;34' c_l_green='1;32'  c_l_cyan='1;36'
 colours=(
     $c_cyan   $c_brown   $c_green   $c_purple   $c_red   $c_blue
   $c_l_cyan $c_yellow  $c_l_green $c_l_purple $c_l_red $c_l_blue
-) ; n_colours="${#colours[@]}"
+); n_colours="${#colours[@]}"
 
-word='[A-Za-z0-9]+' num='[0-9]+' esc=$'\e'
+word='[A-Za-z][A-Za-z0-9_]*' num='[0-9]+' esc=$'\e'
 
 # Usage: colour <msg> { <i> | w }
 function colour ()
@@ -79,6 +79,12 @@ function secs () { date +'%s'; }
 # Usage: die
 function die () { echo "$@" >&2; exit 1; }
 
+# Usage: is_array <varname>
+function is_array ()
+{ declare -p "$1" 2>/dev/null | grep -q '^declare -a'; }
+
+# --
+
 # Usage: ohai { <i> | w } <message(s)>
 function ohai ()
 {                                                               # {{{1
@@ -110,12 +116,12 @@ function ensure_num ()
 
 # Usage: ensure_restart_strategy <value>
 function ensure_restart_strategy ()
-{ [[ "$1" =~ ^(one_for_all|one_for_one)$ ]] \
+{ [[ "$1" =~ ^(one_for_one|one_for_all)$ ]] \
     || die "not a restart strategy: $1"; }
 
 # Usage: ensure_worker <value>
 function ensure_worker ()
-{ [[ "$1" =~ ^(permanent|transient|temporary)$ ]] \
+{ [[ "$1" =~ ^(temporary|transient|permanent)$ ]] \
     || die "not a worker: $1"; }
 
 # --
@@ -174,11 +180,12 @@ function environment ()
   done
 
   if [ "${#ts[@]}" -eq 0 ]; then
-    tm_env=( "${env[@]}" )
+    tm_env=+( "${env[@]}" )
     verbose && ohai w "env=${tm_env[*]}"
   else
     for x in "${ts[@]}"; do
-      eval "tm_env__$x=( \"\${env[@]}\" )"
+      is_array "tm_env__$x" || eval "tm_env__$x=()"
+      eval "tm_env__$x+=( \"\${env[@]}\" )"
       verbose && ohai w "env[$x]=${env[*]}"
     done
   fi
@@ -200,7 +207,7 @@ function concurrency ()
 
 # --
 
-# Usage: restart_strategy { one_for_all | one_for_one }
+# Usage: restart_strategy { one_for_one | one_for_all }
 # Sets $tm_restart_strategy.
 function restart_strategy ()
 { ohai w "restart_strategy $1"
@@ -212,7 +219,7 @@ function max_restart ()
 { ohai w "max_restart $*"
   ensure_num "$1"; ensure_num "$2"; tm_maxR="$1" tm_maxT="$2"; }
 
-# Usage: worker [<task(s)>] { permanent | transient | temporary }
+# Usage: worker [<task(s)>] { temporary | transient | permanent }
 # Sets $tm_worker or $tm_worker__${task*}.
 function worker ()
 {                                                               # {{{1
@@ -236,32 +243,30 @@ function worker ()
 function ohai_worker_exited ()
 { ohai "$worker_i" "$worker_t exited" "exit=$worker_ret"; }
 
+# Usage: run_cmd
+function run_cmd ()
+{ ( [ "${#worker_env[@]}" -gt 0 ] && export "${worker_env[@]}";
+    exec "$tm_sh" -c "$worker_cmd" ); }
+
 # Usage: spawn
 # Sets $worker_{pid,ret}
 function spawn ()
 {                                                               # {{{1
   local i="$worker_i" t="$worker_t" l="$worker_l"
   if [ -n "$l" ]; then
-    "$tm_sh" -c "$worker_cmd" >> "$l/$t-stdout.log" \
-                             2>> "$l/$t-stderr.log" &
+    run_cmd >> "$l/$t-stdout.log" \
+           2>> "$l/$t-stderr.log" &
   else
-    "$tm_sh" -c "$worker_cmd" > >( log "$t" OUT "$i" >&3 ) \
-                             2> >( log "$t" ERR "$i" >&3 ) &
+    run_cmd > >( log "$t" OUT "$i" >&3 ) \
+           2> >( log "$t" ERR "$i" >&3 ) &
   fi
   worker_pid=$!
   ohai "$worker_i" "started $worker_t" "pid=$worker_pid"
   set +e; wait "$worker_pid" 2>/dev/null; worker_ret="$?"; set -e
 }                                                               # }}}1
 
-# Usage: spawn_permanent
-function spawn_permanent ()
-{                                                               # {{{1
-  while :; do
-    spawn; ohai_worker_exited
-    kill -SIGUSR1 "$tm_pid"
-    sleep .5
-  done
-}                                                               # }}}1
+# Usage: spawn_temporary
+function spawn_temporary () { spawn; ohai_worker_exited; }
 
 # Usage: spawn_transient
 function spawn_transient ()
@@ -274,8 +279,15 @@ function spawn_transient ()
   done
 }                                                               # }}}1
 
-# Usage: spawn_temporary
-function spawn_temporary () { spawn; ohai_worker_exited; }
+# Usage: spawn_permanent
+function spawn_permanent ()
+{                                                               # {{{1
+  while :; do
+    spawn; ohai_worker_exited
+    kill -SIGUSR1 "$tm_pid"
+    sleep .5
+  done
+}                                                               # }}}1
 
 # Usage: handle_EXIT_worker
 function handle_EXIT_worker ()
@@ -300,13 +312,11 @@ function spawn_worker ()
   (
     worker_i="$i" worker_t="$t" worker_l="$l"
     worker_cmd="$cmd" worker_sig="$sig"
-    worker_pid= worker_ret=
-    eval "worker_env=( \"\${tm_env__${tasks[i]}[@]}\" )"        # TODO
+    worker_pid= worker_ret= worker_env=( "${tm_env[@]}" )
+    is_array "tm_env__${tasks[i]}" \
+      && eval "worker_env+=( \"\${tm_env__${tasks[i]}[@]}\" )"
     trap handle_EXIT_worker EXIT
-    [ -n "$d" ] && chdir "$d"
-    [ "${#tm_env[@]}"     -gt 0 ] && export "${tm_env[@]}"      # TODO
-    [ "${#worker_env[@]}" -gt 0 ] && export "${worker_env[@]}"  # TODO
-    spawn_"$w"
+    [ -n "$d" ] && chdir "$d"; spawn_"$w"
   ) & pid=$!
   workers+=( "$pid" )
   verbose && ohai w "started worker for $t" "pid=$pid"
@@ -352,7 +362,7 @@ function kill_w_children ()                                     # {{{1
 {
   local sig="$1" pid="$2" p pp; local ps=( $( children "$pid" ) )
   verbose && ohai w "killing $pid w/ children"
-  kill_v "$sig" "$pid" ; sleep 1
+  kill_v "$sig" "$pid"; sleep 1
   for p in "${ps[@]}"; do alive "$p" && kill_v "$sig" "$p"; done
   true
 }                                                               # }}}1
