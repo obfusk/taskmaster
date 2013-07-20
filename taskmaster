@@ -418,7 +418,7 @@ function spawn_worker ()
     [ -n "$d" ] && cd "$d"; spawn_"$w"
   ) & pid=$!
   workers+=( "$pid" )
-  verbose && ohai w "worker started" "pid=$BASHPID task=$worker_t"
+  verbose && ohai w "worker started" "pid=$pid task=$t"
   true
 }                                                               # }}}1
 
@@ -459,8 +459,11 @@ function handle_TERM () { ohai w 'SIGTERM received'; exit 2; }
 # Usage: handle_EXIT
 # Handle EXIT by cleaning up unless $tm_done.
 function handle_EXIT ()
-{ if [ "$tm_done" == no ]; then
-    ohai w 'exiting'; cleanup; sleep 1; fi; }
+{                                                               # {{{1
+  if [ "$tm_done" == no ]; then
+    ohai w 'exiting'; cleanup; sleep 1; ohai w 'exited'
+  fi
+}                                                               # }}}1
 
 # --
 
@@ -519,6 +522,7 @@ function main ()
   verbose && ohai w 'waiting for children ...'
   while :; do wait && break; done   # wait can be interrupted
   verbose && ohai w 'main loop has ended'
+  true
 }                                                               # }}}1
 
 # --

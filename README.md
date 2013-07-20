@@ -5,13 +5,9 @@
     Date        : 2013-07-20
 
     Copyright   : Copyright (C) 2013  Felix C. Stegerman
-    Version     : 0.3.0.dev
+    Version     : 0.3.0
 
 []: }}}1
-
-## TODO
-
-  * TEST!
 
 ## Description
 []: {{{1
@@ -132,6 +128,8 @@
   * use ^^^ to scale up/down?
   * --color=always|auto|never?
   * exitstatus: 0 OK, 1 oops, 2 terminated, 3 max restarts, ...?
+  * better ways to communicate between master and workers?
+  * look at possible timing issues?
 
 ## License
 []: {{{1
