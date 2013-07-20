@@ -12,7 +12,6 @@
 ## TODO
 
   * TEST!
-  * rm DEBUG echoes!
 
 ## Description
 []: {{{1

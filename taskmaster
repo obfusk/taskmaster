@@ -92,6 +92,17 @@ function die () { echo "$@" >&2; exit 1; }
 function is_array ()
 { declare -p "$1" 2>/dev/null | grep -q '^declare -a'; }
 
+# Usage: show_array <args>
+# Show array (quoted).
+function show_array ()
+{                                                               # {{{1
+  if [ "$#" -eq 0 ]; then
+    echo '()'
+  else
+    local x="$( printf ' %q' "$@" )"; echo "( ${x:1} )"
+  fi
+}                                                               # }}}1
+
 # --
 
 # Usage: ohai { <i> | w } <message(s)>
@@ -191,12 +202,12 @@ function environment ()
   done
   if [ "${#ts[@]}" -eq 0 ]; then
     tm_env+=( "${env[@]}" )
-    verbose && ohai w "env=${tm_env[*]}"
+    verbose && ohai w "env=$( show_array "${env[@]}" )"
   else
     for x in "${ts[@]}"; do
       is_array "tm_env__$x" || eval "tm_env__$x=()"
       eval "tm_env__$x+=( \"\${env[@]}\" )"
-      verbose && ohai w "env[$x]=${env[*]}"
+      verbose && ohai w "env[$x]=$( show_array "${env[@]}" )"
     done
   fi
   true
@@ -276,7 +287,8 @@ function kill_v ()
 function kill_children ()
 {                                                               # {{{1
   local pid="$1" p w; shift
-  verbose && ohai w "killing children of $pid" "workers=${workers[*]}"
+  verbose && ohai w "killing children of $pid" \
+                    "workers=$( show_array "${workers[@]}" )"
   for p in $( children "$pid" ); do
     if [ "$#" -gt 0 ]; then
       for w in "$@"; do
@@ -392,7 +404,7 @@ function spawn_worker ()
     is_array "tm_env__${tasks[i]}" \
       && eval "worker_env+=( \"\${tm_env__${tasks[i]}[@]}\" )"
     trap handle_EXIT_worker EXIT
-    [ -n "$d" ] && chdir "$d"; spawn_"$w"
+    [ -n "$d" ] && cd "$d"; spawn_"$w"
   ) & pid=$!
   workers+=( "$pid" )
   verbose && ohai w "worker for $t started" "pid=$pid"
@@ -417,8 +429,8 @@ function handle_child_restart ()
   then="${tm_restart[$(( tm_restarts % tm_maxR ))]}"
   verbose && ohai w 'a child has restarted' "now=$now then=$then"
   if [ -n "$then" ] && [ "$(( now - then ))" -lt "$tm_maxT" ]; then
-    ohai w 'maximum restarts reached; exiting'
-    cleanup; exit 3
+    ohai w 'maximum restarts reached'
+    exit 3
   elif [ "$tm_restart_strategy" == one_for_all ]; then
     ohai w 'restarting all workers (one_for_all)'
     cleanup; main
@@ -485,15 +497,15 @@ function start_tasks ()
 # to call this function again, when restarting all worker.
 function main ()
 {                                                               # {{{1
-  echo A # DEBUG
+  verbose && ohai w 'starting main loop, tasks ...'
   start_tasks
   trap handle_child_restart SIGUSR1
   trap handle_INT           INT
   trap handle_TERM          TERM
   trap handle_EXIT          EXIT
-  echo B # DEBUG
+  verbose && ohai w 'waiting for children ...'
   while :; do wait && break; done   # wait can be interrupted
-  echo C # DEBUG
+  verbose && ohai w 'main loop has ended'
 }                                                               # }}}1
 
 # --
