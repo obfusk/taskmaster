@@ -37,6 +37,11 @@
 
   See `*.sample` for configuration examples.
 
+  Taskmaster will export `TASK=<task>` and `TASK_N=<n>` to the
+  environment of each task.  For example, when starting a task named
+  `foo` with a concurrency of 2, the first process will have `TASK=foo
+  TASK_N=1` and the second one `TASK=foo TASK_N=2`.
+
   You can override which files and shell taskmaster uses by setting
   `$TASKFILE`, `$TASKMASTERRC`, and `$TASKMASTER_SHELL`.
 

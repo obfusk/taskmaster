@@ -100,7 +100,7 @@ function log ()
 {                                                               # {{{1
   local task="$1" what="$2" i="$3" REPLY
   while read -r; do
-    printf '%s %s\n' "$( colour "$(dt) $what $task |" "$i" )" "$REPLY"
+    printf '%s\n' "$( colour "$(dt) $what $task |" "$i" ) $REPLY"
   done
 }                                                               # }}}1
 
@@ -130,7 +130,6 @@ function ensure_worker ()
 # Sets $tm_cwd or $tm_cwd__{$task*}.
 function cwd ()
 {                                                               # {{{1
-  ohai w "cwd $*"
   if [ "$#" -eq 1 ]; then
     tm_cwd="$1"
     verbose && ohai w "cwd=$tm_cwd"
@@ -147,7 +146,6 @@ function cwd ()
 # Sets $tm_logdir or $tm_logdir__{$task*}.
 function logdir ()
 {                                                               # {{{1
-  ohai w "logdir $*"
   if [ "$#" -eq 1 ]; then
     tm_logdir="$1"
     verbose && ohai w "logdir=$tm_logdir"
@@ -165,7 +163,6 @@ function logdir ()
 function environment ()
 {                                                               # {{{1
   local ts=() env i x
-  ohai w "environment $*"
   for (( i = 0; i < $#; ++i )); do
     local x="${@:$i:1}"
     if [[ "$x" =~ ^$word$ ]]; then
@@ -223,7 +220,6 @@ function max_restart ()
 # Sets $tm_worker or $tm_worker__${task*}.
 function worker ()
 {                                                               # {{{1
-  ohai w "worker $*"
   if [ "$#" -eq 1 ]; then
     ensure_worker "$1"; tm_worker="$1"
     verbose && ohai w "worker=$tm_worker"
@@ -312,7 +308,8 @@ function spawn_worker ()
   (
     worker_i="$i" worker_t="$t" worker_l="$l"
     worker_cmd="$cmd" worker_sig="$sig"
-    worker_pid= worker_ret= worker_env=( "${tm_env[@]}" )
+    worker_pid= worker_ret=
+    worker_env=( TASK="${tasks[i]}" TASK_N="$i" "${tm_env[@]}" )
     is_array "tm_env__${tasks[i]}" \
       && eval "worker_env+=( \"\${tm_env__${tasks[i]}[@]}\" )"
     trap handle_EXIT_worker EXIT
@@ -449,15 +446,15 @@ function start_tasks ()
 # ...
 function main ()
 {
-  echo A
+  echo A # DEBUG
   start_tasks
   trap handle_child_restart SIGUSR1
   trap handle_INT           INT
   trap handle_TERM          TERM
   trap handle_EXIT          EXIT
-  echo B
+  echo B # DEBUG
   while :; do wait && break; done
-  echo C
+  echo C # DEBUG
 }
 
 # --
