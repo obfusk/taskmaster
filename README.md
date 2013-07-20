@@ -18,7 +18,7 @@
 
   taskmaster - manage tasks using a Taskfile
 
-  Taskmaster uses a `Taskfile` to specify tasks to be run.  A
+  Taskmaster [1] uses a `Taskfile` to specify tasks to be run.  A
   `.taskmaster` file can be used for additional configuration.  You
   can specify global or task-specific environments, working
   directories, log dirs (w/ log files for STDOUT and STDERR), etc.
@@ -114,6 +114,15 @@
 
 []: }}}1
 
+## BUGS
+
+  I've done my best to test taskmaster to make sure it works as
+  expected.  It seems to.  I cannot however guarantee that bad things
+  will not happen.  Dealing with processes like this is not entirely
+  trivial.  Please test taskmaster yourself before you use it in a
+  production environment.  You can report issues and request features
+  at the github issue tracker.
+
 ## TODO
 
   * always send SIGTERM to `bash -c`?
@@ -127,14 +136,17 @@
 ## License
 []: {{{1
 
-  GPLv2 [1].
+  GPLv2 [2].
 
 []: }}}1
 
 ## References
 []: {{{1
 
-  [1] GNU General Public License, version 2
+  [1] Taskmaster
+  --- https://github.com/noxqsgit/taskmaster
+
+  [2] GNU General Public License, version 2
   --- http://www.opensource.org/licenses/GPL-2.0
 
 []: }}}1
