@@ -57,7 +57,7 @@
     $ taskmaster foo=2 bar=1      # run and override concurrency
 
   Now wait for all tasks to finish, or kill taskmaster w/ SIGTERM or
-  SIGINT (^C)
+  SIGINT (^C).
 
 []: }}}1
 
@@ -80,6 +80,8 @@
   * `one_for_one` (the default) - restarts the process that died.
   * `one_for_all` - restarts all processes when one dies.
 
+#
+
   NB: `temporary` processes' death will always be ignored and not
   result in any restarts, even with the `one_for_all` restart
   strategy.
@@ -94,12 +96,12 @@
 
 []: }}}1
 
-## CAVEATS: Killing, Backround Processes, and Signals
+## CAVEATS: Killing, Background Processes, and Signals
 []: {{{1
 
   The commands in the `Taskfile` are passed to `bash -c`.
 
-  To prevent runaway backround processes, taskmaster will kill the
+  To prevent runaway background processes, taskmaster will kill the
   `bash -c` process as well as its direct children.  Nonetheless, some
   care must still be taken.
 
