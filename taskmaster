@@ -154,6 +154,7 @@ function cwd ()
       verbose && ohai w "cwd[$x]=$d"
     done
   fi
+  true
 }                                                               # }}}1
 
 # Usage: logdir [<task(s)>] <dir>
@@ -170,6 +171,7 @@ function logdir ()
       verbose && ohai w "logdir[$x]=$d"
     done
   fi
+  true
 }                                                               # }}}1
 
 # Usage: environment [<task(s)>] VAR1=VAL1 ...
@@ -186,7 +188,7 @@ function environment ()
     [[ "$x" =~ ^($word)= ]] || die "not a <word>=...: $x"
   done
   if [ "${#ts[@]}" -eq 0 ]; then
-    tm_env=+( "${env[@]}" )
+    tm_env+=( "${env[@]}" )
     verbose && ohai w "env=${tm_env[*]}"
   else
     for x in "${ts[@]}"; do
@@ -195,6 +197,7 @@ function environment ()
       verbose && ohai w "env[$x]=${env[*]}"
     done
   fi
+  true
 }                                                               # }}}1
 
 # Usage: concurrency <task1>=<n1> <task2>=<n2> ...
@@ -209,6 +212,7 @@ function concurrency ()
     eval "tm_concurrency__$t=$n"
     verbose && ohai w "concurrency[$t]=$n"
   done
+  true
 }                                                               # }}}1
 
 # --
@@ -239,6 +243,7 @@ function worker ()
       verbose && ohai w "worker[$x]=$d"
     done
   fi
+  true
 }                                                               # }}}1
 
 # --
@@ -254,6 +259,7 @@ function children ()
   local pid="$1" p pp
   while read -r p pp; do [ "$pp" == "$pid" ] && echo "$p"; done \
     < <( ps -e -o pid= -o ppid= )
+  true
 }                                                               # }}}1
 
 # Usage: kill_v -<sig> <pid>
@@ -277,6 +283,7 @@ function kill_children ()
       kill_v -SIGTERM "$p"
     fi
   done
+  true
 }                                                               # }}}1
 
 # Usage: kill_w_children -<sig> <pid>
@@ -364,6 +371,7 @@ function handle_EXIT_worker ()
       kill_w_children -"$worker_sig" "$p"
     fi
   done
+  true
 }                                                               # }}}1
 
 # Usage: spawn_worker <i> <j> <k> <t> <l> <d> <w> <cmd> <sig>
@@ -385,6 +393,7 @@ function spawn_worker ()
   ) & pid=$!
   workers+=( "$pid" )
   verbose && ohai w "worker for $t started" "pid=$pid"
+  true
 }                                                               # }}}1
 
 # --
