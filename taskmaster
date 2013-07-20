@@ -23,6 +23,7 @@ exec 3>/dev/stdout >&3
 
 # --
 
+# Use colour if STDOUT is a tty
 if [ -t 1 ]; then use_colour=yes; else use_colour=no; fi
 
  c_black='0;30'     c_blue='0;34'   c_green='0;32'    c_cyan='0;36'
@@ -37,7 +38,10 @@ colours=(
 
 word='[A-Za-z][A-Za-z0-9_]*' num='[0-9]+' esc=$'\e'
 
+# --
+
 # Usage: colour <msg> { <i> | w }
+# Show message in (rotated) colour.
 function colour ()
 {                                                               # {{{1
   local msg="$1" i="$2" j c
@@ -54,7 +58,8 @@ function colour ()
 }                                                               # }}}1
 
 # Usage: verbose
-function verbose () { [ "$VERBOSE" == yes ]; }
+# Are we verbose?
+function verbose () { [ "$TASKMASTER_VERBOSE" == yes ]; }
 
 # --
 
@@ -71,21 +76,26 @@ tm_pid="$$" tm_restart=() tm_restarts=0
 # --
 
 # Usage: dt
+# Current time as '%F %T'.
 function dt () { date +'%F %T'; }
 
 # Usage: secs
+# Current time in secs since epoch.
 function secs () { date +'%s'; }
 
 # Usage: die
+# Show message to STDERR, exit 1.
 function die () { echo "$@" >&2; exit 1; }
 
 # Usage: is_array <varname>
+# Is var an array?
 function is_array ()
 { declare -p "$1" 2>/dev/null | grep -q '^declare -a'; }
 
 # --
 
 # Usage: ohai { <i> | w } <message(s)>
+# Show message(s) w/ structure, colour.
 function ohai ()
 {                                                               # {{{1
   local i="$1" o=; shift
@@ -95,7 +105,7 @@ function ohai ()
 }                                                               # }}}1
 
 # Usage: log <task> { OUT | ERR } { <i> | w }
-# Reads from STDIN, then writes to STDOUT w/ extra info.
+# Reads from STDIN, then writes to STDOUT w/ extra info and colour.
 function log ()
 {                                                               # {{{1
   local task="$1" what="$2" i="$3" REPLY
@@ -107,27 +117,31 @@ function log ()
 # --
 
 # Usage: ensure_word <value>
+# Die if not a word.
 function ensure_word ()
 { [[ "$1" =~ ^$word$ ]] || die "not a word: $1"; }
 
 # Usage: ensure_num <value>
+# Die if not a number.
 function ensure_num ()
 { [[ "$1" =~ ^$num$ ]] || die "not a number: $1"; }
 
 # Usage: ensure_restart_strategy <value>
+# Die if not a restart strategy.
 function ensure_restart_strategy ()
 { [[ "$1" =~ ^(one_for_one|one_for_all)$ ]] \
     || die "not a restart strategy: $1"; }
 
 # Usage: ensure_worker <value>
+# Die if not a worker type.
 function ensure_worker ()
 { [[ "$1" =~ ^(temporary|transient|permanent)$ ]] \
-    || die "not a worker: $1"; }
+    || die "not a worker type: $1"; }
 
 # --
 
 # Usage: cwd [<task(s)>] <dir>
-# Sets $tm_cwd or $tm_cwd__{$task*}.
+# Sets $tm_cwd or $tm_cwd__{$task*}; for TASKMASTERRC.
 function cwd ()
 {                                                               # {{{1
   if [ "$#" -eq 1 ]; then
@@ -143,7 +157,7 @@ function cwd ()
 }                                                               # }}}1
 
 # Usage: logdir [<task(s)>] <dir>
-# Sets $tm_logdir or $tm_logdir__{$task*}.
+# Sets $tm_logdir or $tm_logdir__{$task*}; for TASKMASTERRC.
 function logdir ()
 {                                                               # {{{1
   if [ "$#" -eq 1 ]; then
@@ -159,23 +173,18 @@ function logdir ()
 }                                                               # }}}1
 
 # Usage: environment [<task(s)>] VAR1=VAL1 ...
-# Sets $tm_env or $tm_env__{$task*}.
+# Appends to $tm_env or $tm_env__{$task*}; for TASKMASTERRC.
 function environment ()
 {                                                               # {{{1
   local ts=() env i x
   for (( i = 0; i < $#; ++i )); do
     local x="${@:$i:1}"
-    if [[ "$x" =~ ^$word$ ]]; then
-      ts+=( "$x" )
-    else
-      break
-    fi
+    if [[ "$x" =~ ^$word$ ]]; then ts+=( "$x" ); else break; fi
   done
   env=( "${@:$i:$(($#-i))}" )
   for x in "${env[@]}"; do
     [[ "$x" =~ ^($word)= ]] || die "not a <word>=...: $x"
   done
-
   if [ "${#ts[@]}" -eq 0 ]; then
     tm_env=+( "${env[@]}" )
     verbose && ohai w "env=${tm_env[*]}"
@@ -189,7 +198,7 @@ function environment ()
 }                                                               # }}}1
 
 # Usage: concurrency <task1>=<n1> <task2>=<n2> ...
-# Sets $tm_concurrency__{$task*}; should be called in $TASKMASTERRC.
+# Sets $tm_concurrency__{$task*}; for TASKMASTERRC.
 function concurrency ()
 {                                                               # {{{1
   local x t n
@@ -205,27 +214,26 @@ function concurrency ()
 # --
 
 # Usage: restart_strategy { one_for_one | one_for_all }
-# Sets $tm_restart_strategy.
+# Sets $tm_restart_strategy; for TASKMASTERRC.
 function restart_strategy ()
 { ohai w "restart_strategy $1"
   ensure_restart_strategy "$1"; tm_restart_strategy="$1"; }
 
 # Usage: max_restart <maxR> <maxT>
-# Sets $tm_maxR, $tm_maxT.
+# Sets $tm_maxR, $tm_maxT; for TASKMASTERRC.
 function max_restart ()
 { ohai w "max_restart $*"
   ensure_num "$1"; ensure_num "$2"; tm_maxR="$1" tm_maxT="$2"; }
 
 # Usage: worker [<task(s)>] { temporary | transient | permanent }
-# Sets $tm_worker or $tm_worker__${task*}.
+# Sets $tm_worker or $tm_worker__${task*}; for TASKMASTERRC.
 function worker ()
 {                                                               # {{{1
   if [ "$#" -eq 1 ]; then
     ensure_worker "$1"; tm_worker="$1"
     verbose && ohai w "worker=$tm_worker"
   else
-    local x d="${@:$#:1}"
-    ensure_worker "$d"
+    local x d="${@:$#:1}"; ensure_worker "$d"
     for x in "${@:1:$(($#-1))}"; do
       ensure_word "$x"; eval "tm_worker__$x=\$d"
       verbose && ohai w "worker[$x]=$d"
@@ -235,96 +243,12 @@ function worker ()
 
 # --
 
-# Usage: ohai_worker_exited
-function ohai_worker_exited ()
-{ ohai "$worker_i" "$worker_t exited" "exit=$worker_ret"; }
-
-# Usage: run_cmd
-function run_cmd ()
-{ ( [ "${#worker_env[@]}" -gt 0 ] && export "${worker_env[@]}";
-    exec "$tm_sh" -c "$worker_cmd" ); }
-
-# Usage: spawn
-# Sets $worker_{pid,ret}
-function spawn ()
-{                                                               # {{{1
-  local i="$worker_i" t="$worker_t" l="$worker_l"
-  if [ -n "$l" ]; then
-    run_cmd >> "$l/$t-stdout.log" \
-           2>> "$l/$t-stderr.log" &
-  else
-    run_cmd > >( log "$t" OUT "$i" >&3 ) \
-           2> >( log "$t" ERR "$i" >&3 ) &
-  fi
-  worker_pid=$!
-  ohai "$worker_i" "started $worker_t" "pid=$worker_pid"
-  set +e; wait "$worker_pid" 2>/dev/null; worker_ret="$?"; set -e
-}                                                               # }}}1
-
-# Usage: spawn_temporary
-function spawn_temporary () { spawn; ohai_worker_exited; }
-
-# Usage: spawn_transient
-function spawn_transient ()
-{                                                               # {{{1
-  while :; do
-    spawn; ohai_worker_exited
-    [ "$worker_ret" -eq 0 ] && break
-    kill -SIGUSR1 "$tm_pid"
-    sleep .5
-  done
-}                                                               # }}}1
-
-# Usage: spawn_permanent
-function spawn_permanent ()
-{                                                               # {{{1
-  while :; do
-    spawn; ohai_worker_exited
-    kill -SIGUSR1 "$tm_pid"
-    sleep .5
-  done
-}                                                               # }}}1
-
-# Usage: handle_EXIT_worker
-function handle_EXIT_worker ()
-{                                                               # {{{1
-  ohai w "exiting worker for $worker_t"
-  local pid="$BASHPID" p
-  for p in $( children "$pid" ); do
-    if [ "$p" == "$worker_pid" ]; then
-      ohai "$worker_i" "kill $worker_t" "signal=$worker_sig pid=$p"
-      kill_w_children -"$worker_sig" "$p"
-    fi
-  done
-}                                                               # }}}1
-
-# Usage: spawn_worker <i> <j> <k> <t> <l> <d> <w> <cmd> <sig>
-# Sets $worker_{i,t,l,cmd,sig,pid,ret,env} in worker;
-# appends to $workers in parent.
-function spawn_worker ()
-{                                                               # {{{1
-  local i="$1" j="$2" k="$3" t="$4" l="$5" d="$6" w="$7" cmd="$8"
-  local sig="$9" pid
-  (
-    worker_i="$i" worker_t="$t" worker_l="$l"
-    worker_cmd="$cmd" worker_sig="$sig"
-    worker_pid= worker_ret=
-    worker_env=( TASK="${tasks[i]}" TASK_N="$i" "${tm_env[@]}" )
-    is_array "tm_env__${tasks[i]}" \
-      && eval "worker_env+=( \"\${tm_env__${tasks[i]}[@]}\" )"
-    trap handle_EXIT_worker EXIT
-    [ -n "$d" ] && chdir "$d"; spawn_"$w"
-  ) & pid=$!
-  workers+=( "$pid" )
-  verbose && ohai w "started worker for $t" "pid=$pid"
-}                                                               # }}}1
-
-# --
-
 # Usage: alive <pid>
+# Is pid alive?
 function alive () { test -n "$( ps -p "$1" -o pid= )"; }
 
 # Usage: children <pid>
+# Shows direct children of pid.
 function children ()
 {                                                               # {{{1
   local pid="$1" p pp
@@ -333,15 +257,17 @@ function children ()
 }                                                               # }}}1
 
 # Usage: kill_v -<sig> <pid>
+# Try to kill pid w/ sig; always succeeds.
 function kill_v ()
 { verbose && ohai w "kill $*"; kill "$@" || true; }
 
 # Usage: kill_children <pid> [<worker(s)>]
-# Kills children of pid; only kills pids in workers if any.
+# Kills direct children of pid; if workers are specifies, only kills
+# children w/ those pids.
 function kill_children ()
 {                                                               # {{{1
   local pid="$1" p w; shift
-  verbose && ohai w "killing children of $pid (${workers[*]})"
+  verbose && ohai w "killing children of $pid" "workers=${workers[*]}"
   for p in $( children "$pid" ); do
     if [ "$#" -gt 0 ]; then
       for w in "$@"; do
@@ -366,47 +292,145 @@ function kill_w_children ()                                     # {{{1
 
 # --
 
+# Usage: run_cmd
+# WORKER; runs command w/ shell + env; uses $worker_{env,cmd}, $tm_sh.
+function run_cmd ()
+{ ( [ "${#worker_env[@]}" -gt 0 ] && export "${worker_env[@]}";
+    exec "$tm_sh" -c "$worker_cmd" ); }
+
+# Usage: spawn
+# WORKER; spawns process; sets $worker_{pid,ret};
+# uses $worker_{i,t,l}.
+function spawn ()
+{                                                               # {{{1
+  local i="$worker_i" t="$worker_t" l="$worker_l"
+  if [ -n "$l" ]; then
+    run_cmd >> "$l/$t-stdout.log" \
+           2>> "$l/$t-stderr.log" &
+  else
+    run_cmd > >( log "$t" OUT "$i" >&3 ) \
+           2> >( log "$t" ERR "$i" >&3 ) &
+  fi
+  worker_pid=$!
+  ohai "$worker_i" "$worker_t started" "pid=$worker_pid"
+  set +e; wait "$worker_pid" 2>/dev/null; worker_ret="$?"; set -e
+}                                                               # }}}1
+
+# Usage: ohai_process_exited
+# WORKER; show message about exited process; uses $worker_{i,t,ret}.
+function ohai_process_exited ()
+{ ohai "$worker_i" "$worker_t exited" "status=$worker_ret"; }
+
+# --
+
+# Usage: spawn_temporary
+# WORKER; spawn temporary worker.
+function spawn_temporary () { spawn; ohai_process_exited; }
+
+# Usage: spawn_transient
+# WORKER; spawn transient worker; calls home.
+function spawn_transient ()
+{                                                               # {{{1
+  while :; do
+    spawn; ohai_process_exited
+    [ "$worker_ret" -eq 0 ] && break
+    kill -SIGUSR1 "$tm_pid"
+    sleep .5
+  done
+}                                                               # }}}1
+
+# Usage: spawn_permanent
+# WORKER; spawn permanent worker; calls home.
+function spawn_permanent ()
+{                                                               # {{{1
+  while :; do
+    spawn; ohai_process_exited
+    kill -SIGUSR1 "$tm_pid"
+    sleep .5
+  done
+}                                                               # }}}1
+
+# --
+
+# Usage: handle_EXIT_worker
+# WORKER; handles EXIT by killing process; uses $worker{t,i,sig}.
+function handle_EXIT_worker ()
+{                                                               # {{{1
+  verbose && ohai w "worker for $worker_t exiting"
+  local pid="$BASHPID" p
+  for p in $( children "$pid" ); do
+    if [ "$p" == "$worker_pid" ]; then
+      ohai "$worker_i" "killing $worker_t" "signal=$worker_sig pid=$p"
+      kill_w_children -"$worker_sig" "$p"
+    fi
+  done
+}                                                               # }}}1
+
+# Usage: spawn_worker <i> <j> <k> <t> <l> <d> <w> <cmd> <sig>
+# Spawns worker in background; appends pid to $workers.
+# WORKER: sets $worker_{i,t,l,cmd,sig,pid,ret,env}.
+function spawn_worker ()
+{                                                               # {{{1
+  local i="$1" j="$2" k="$3" t="$4" l="$5" d="$6" w="$7" cmd="$8"
+  local sig="$9" pid
+  (
+    worker_i="$i" worker_t="$t" worker_l="$l"
+    worker_cmd="$cmd" worker_sig="$sig"
+    worker_pid= worker_ret=
+    worker_env=( TASK="${tasks[i]}" TASK_N="$i" "${tm_env[@]}" )
+    is_array "tm_env__${tasks[i]}" \
+      && eval "worker_env+=( \"\${tm_env__${tasks[i]}[@]}\" )"
+    trap handle_EXIT_worker EXIT
+    [ -n "$d" ] && chdir "$d"; spawn_"$w"
+  ) & pid=$!
+  workers+=( "$pid" )
+  verbose && ohai w "worker for $t started" "pid=$pid"
+}                                                               # }}}1
+
+# --
+
+# Usage: cleanup
+# Cleans up by unsetting SIGUSR1 trap and killing children; uses
+# $tm_pid, $workers.
+function cleanup ()
+{ trap - SIGUSR1; kill_children "$tm_pid" "${workers[@]}" & wait; }
+
 # Usage: handle_child_restart
-# Handle child restarted (SIGUSR1).
+# Handle child restarted (SIGUSR1); uses $tm_restart*, $tm_max*.
 function handle_child_restart ()
 {                                                               # {{{1
-  local now then
-  ohai w 'a child has restarted'
-  now="$( secs )"
+  local now="$( secs )" then
   tm_restart["$(( tm_restarts % tm_maxR ))"]="$now"
   (( ++tm_restarts ))
   then="${tm_restart[$(( tm_restarts % tm_maxR ))]}"
+  verbose && ohai w 'a child has restarted' "now=$now then=$then"
   if [ -n "$then" ] && [ "$(( now - then ))" -lt "$tm_maxT" ]; then
-    ohai w 'maximum restarts reached' 'exiting'
-    kill_children "$tm_pid" "${workers[@]}"
-    exit 1
+    ohai w 'maximum restarts reached; exiting'
+    cleanup; exit 3
   elif [ "$tm_restart_strategy" == one_for_all ]; then
-    ohai w 'restarting everyting (one_for_all)'
-    kill_children "$tm_pid" "${workers[@]}" & wait
-    # main -- TODO
+    ohai w 'restarting all workers (one_for_all)'
+    cleanup; main
   fi
 }                                                               # }}}1
 
 # Usage: handle_INT
-function handle_INT () { ohai w 'SIGINT received'; exit; }
+# Handle SIGINT by exiting.
+function handle_INT () { ohai w 'SIGINT received'; exit 2; }
 
 # Usage: handle_TERM
-function handle_TERM () { ohai w 'SIGTERM received'; exit; }
+# Handle SIGTERM by exiting.
+function handle_TERM () { ohai w 'SIGTERM received'; exit 2; }
 
 # Usage: handle_EXIT
+# Handle EXIT by cleaning up unless $tm_done.
 function handle_EXIT ()
-{                                                               # {{{1
-  if [ "$tm_done" == no ]; then
-    ohai w 'exiting'
-    kill_children "$tm_pid" "${workers[@]}" & wait
-  fi
-}                                                               # }}}1
+{ if [ "$tm_done" == no ]; then ohai w 'exiting'; cleanup; fi; }
 
 # --
 
 # Usage: parse_Taskfile
 # Parse $tm_tf; read w/o -r allows for continuation lines; appends to
-# $tasks, $cmds, $sigs; sets $n_tasks.
+# $tasks, $cmds, $sigs.
 function parse_Taskfile ()
 {                                                               # {{{1
   local task cmd t s c
@@ -420,15 +444,16 @@ function parse_Taskfile ()
     fi
     tasks+=( "$t" ); cmds+=( "$c" ); sigs+=( "$s" )
   done < "$tm_tf"
-  n_tasks="${#cmds[@]}"
 }                                                               # }}}1
 
 # Usage: start_tasks
-# Start commands w/ concurrency; uses config; appends to $conc.
+# Start commands w/ concurrency;
+# uses $tm_{concurrency*,logdir*,cwd*,worker*}, $tasks, $cmds, $sigs;
+# sets $conc, $workers.
 function start_tasks ()
 {                                                               # {{{1
-  local c t l d w; local -i k=0 i j
-  workers=()
+  local c t l d w; local -i k=0 i j n_tasks="${#tasks[@]}"
+  conc=() workers=()
   for (( i = 0; i < n_tasks; ++i )); do
     eval "c=\${tm_concurrency__${tasks[i]}:-1}"; conc+=( "$c" )
     for (( j = 1; j <= c; ++j )); do
@@ -443,9 +468,11 @@ function start_tasks ()
   done
 }                                                               # }}}1
 
-# ...
+# Usage: main
+# Main function; starts tasks, sets traps, waits; you should be able
+# to call this function again, when restarting all worker.
 function main ()
-{
+{                                                               # {{{1
   echo A # DEBUG
   start_tasks
   trap handle_child_restart SIGUSR1
@@ -453,24 +480,19 @@ function main ()
   trap handle_TERM          TERM
   trap handle_EXIT          EXIT
   echo B # DEBUG
-  while :; do wait && break; done
+  while :; do wait && break; done   # wait can be interrupted
   echo C # DEBUG
-}
+}                                                               # }}}1
 
 # --
 
-ohai w 'starting...'
-ohai w "TASKFILE $tm_tf"
+if [ -e "$tm_rc" ]; then rc="$tm_rc"; else rc=; fi
+ohai w 'starting...' "TASKFILE=$tm_tf TASKMASTERRC=$rc"
+[ -n "$rc" ] && source "$rc"; [ "$#" -gt 0 ] && concurrency "$@"
 
-[ -e "$tm_rc" ] && { ohai w "TASKMASTERRC $tm_rc"; source "$tm_rc"; }
-[ "$#" -gt 0 ] && concurrency "$@"
+tasks=() cmds=() sigs=()    # will be set once
+conc= workers= tm_done=no   # can be set multiple times
 
-tasks=() cmds=() sigs=() pids=() conc=()
-workers= tm_done=no
-
-parse_Taskfile
-main
-tm_done=yes
-ohai w 'done'
+parse_Taskfile; main; tm_done=yes; ohai w 'done'
 
 # vim: set tw=70 sw=2 sts=2 et fdm=marker :

@@ -12,6 +12,7 @@
 ## TODO
 
   * TEST!
+  * rm DEBUG echoes!
 
 ## Description
 []: {{{1
@@ -71,7 +72,7 @@
 ### Worker Types
 
   * `temporary` (the default) - the process' death is ignored.
-  * `transient` - will restart the process if it returned non-zero.
+  * `transient` - will restart the process if its status is non-zero.
   * `permanent` - will always restart the process when it dies.
 
 ### Restart Strategies
@@ -120,6 +121,7 @@
   * use fifo + SIGUSR2 to allow adding additional workers?
   * use ^^^ to scale up/down?
   * --color=always|auto|never?
+  * exitstatus: 0 OK, 1 oops, 2 terminated, 3 max restarts, ...?
 
 ## License
 []: {{{1
