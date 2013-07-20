@@ -1,9 +1,16 @@
-export VARIABLE=VALUE
+cwd /path/to/dir                    # default cwd
+cwd foo baz /path/to/other/dir      # cwd for specific tasks
 
-cwd /path/to/working/dir            # cwd for all tasks
-cwd baz /path/to/other/working/dir  # cwd for one task
+logdir /path/to/dir                 # default log dir
+logdir foo bar relative/dir         # log dir for specific tasks
 
-logdir /path/to/log/dir             # logdir for all tasks
-logdir bar /path/to/other/log/dir   # logdir for one task
+environment PATH="$PATH:..."        # add to env for all tasks
+environment foo bar VAR=VAL         # add to env for specific tasks
 
-concurrency foo=1 bar=2
+concurrency foo=2 bar=3             # start foo 2x, bar 3x
+
+restart_strategy one_for_all        # restart strategy
+max_restart 5 120                   # no more than 5 per 2 hours
+
+worker transient                    # default worker type
+worker foo bar baz permanent        # worker type for specific tasks

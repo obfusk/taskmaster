@@ -31,6 +31,10 @@
   not respond to `SIGTERM` properly when backgrounded, but will quit
   nicely when sent a `SIGINT`.
 
+  When using a log dir, the process' STDOUT and STDERR will be
+  redirected to `<logdir>/<task>.<n>-stdout.log` and
+  `<logdir>/<task>.<n>-stderr.log`, respectively.
+
   See `*.sample` for configuration examples.
 
   You can override which files and shell taskmaster uses by setting
