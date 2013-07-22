@@ -6,6 +6,7 @@ logdir foo bar relative/dir         # log dir for specific tasks
 
 environment PATH="$PATH:..."        # add to env for all tasks
 environment foo bar VAR=VAL         # add to env for specific tasks
+environment rackup PORT=4999
 
 concurrency foo=2 bar=3             # start foo 2x, bar 3x
 
@@ -14,3 +15,6 @@ max_restart 5 120                   # no more than 5 per 2 hours
 
 worker transient                    # default worker type
 worker foo bar baz permanent        # worker type for specific tasks
+
+# load local config (if it exists)
+if [ -e .taskmaster.local ]; then . .taskmaster.local; fi

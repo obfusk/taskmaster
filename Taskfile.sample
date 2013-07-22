@@ -3,5 +3,6 @@ bar:      do-this && do-that
 baz:      while true; do date; sleep 1; done
 qux:      for x in $( seq 1 10 ); do echo QUX; sleep 1; done; false
 puma:     bundle exec puma -e production -b "unix://$SOCKET"
-rackup:   SIGINT bundle exec rackup -E production -p "$PORT"
+rackup:   SIGINT bundle exec rackup -E production \
+            -p "$(( PORT + TASK_N ))"
 sidekiq:  SIGINT RAILS_ENV=production bundle exec sidekiq
