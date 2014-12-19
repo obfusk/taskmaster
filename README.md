@@ -142,7 +142,7 @@
 []: {{{1
 
   [1] Taskmaster
-  --- https://github.com/noxqsgit/taskmaster
+  --- https://github.com/obfusk/taskmaster
 
   [2] GNU General Public License, version 2
   --- http://www.opensource.org/licenses/GPL-2.0
